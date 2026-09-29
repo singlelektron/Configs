@@ -37,7 +37,8 @@ python3 scripts/doctor.py
 会执行完整系统升级以避免部分升级。脚本不安装大型 TeX 发行版、Niri 或额外 AI 客户端。
 软件安装无法通过配置回滚命令撤销。系统包随包管理器更新；插件提交和 Python CLI 版本固定。
 
-Kitty 会为新窗口补充用户工具路径。其他终端和 SSH shell 中，按需把下面一行加入
+Kitty 会为新窗口补充用户工具路径；macOS 还补充两种架构的 Homebrew 路径，
+从 Dock 启动也能找到 LazyGit。其他终端和 SSH shell 中，按需把下面一行加入
 自己的 `~/.zshrc` 或 `~/.bashrc`：
 
 ```sh

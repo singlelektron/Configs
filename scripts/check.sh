@@ -22,6 +22,7 @@ if command -v kitty >/dev/null 2>&1; then
   printf 'font_size 17.0\n' > "$test_root/.config/dotfiles-local/kitty.conf"
   env DOTFILES_KITTY_TEST_CONFIG="$test_root/.config/kitty/kitty.conf" kitty +runpy '
 import os
+import sys
 from kitty.config import load_config
 from kitty.options.utils import parse_key_action
 bad = []
@@ -33,6 +34,9 @@ assert options.dynamic_background_opacity
 assert options.background == type(options.background)(22, 27, 38)
 assert os.path.expanduser("~/.local/bin") in options.env["PATH"].split(":")
 assert os.path.expanduser("~/.cargo/bin") in options.env["PATH"].split(":")
+if sys.platform == "darwin":
+    assert "/opt/homebrew/bin" in options.env["PATH"].split(":")
+    assert "/usr/local/bin" in options.env["PATH"].split(":")
 git_keys = [d.definition for definitions in options.keyboard_modes[""].keymap.values()
             for d in definitions if "lazygit" in d.definition]
 assert len(git_keys) == 1

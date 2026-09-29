@@ -31,7 +31,9 @@ function M.open()
   local previous = vim.api.nvim_get_current_win()
   vim.cmd.tabnew()
   local tab, buffer = vim.api.nvim_get_current_tabpage(), vim.api.nvim_get_current_buf()
-  vim.bo.bufhidden = "wipe"
+  -- Buffer-tab clicks may temporarily hide the terminal. Keep the process
+  -- alive until it exits; on_exit below cleans up only this owned buffer.
+  vim.bo.bufhidden = "hide"
   local job = vim.fn.jobstart({ "lazygit", "--use-config-file", config }, {
     term = true,
     cwd = root,
@@ -70,7 +72,7 @@ function M.open()
     return
   end
   vim.bo[buffer].filetype = "lazygit"
-  vim.bo[buffer].bufhidden = "wipe"
+  vim.bo[buffer].bufhidden = "hide"
   vim.cmd.startinsert()
 end
 

@@ -43,6 +43,25 @@ local function test()
   }))
   assert(#vim.api.nvim_list_tabpages() == before and not vim.api.nvim_tabpage_is_valid(origin_tab))
 
+  -- A file-buffer tab click reuses the Git window. Hiding the terminal must
+  -- preserve both the running Git process and unsaved work in the other buffer.
+  local work_buffer = vim.api.nvim_get_current_buf()
+  vim.api.nvim_buf_set_lines(work_buffer, 0, -1, false, { "unsaved file buffer" })
+  git.open()
+  buffer = vim.api.nvim_get_current_buf()
+  local git_tab = vim.api.nvim_get_current_tabpage()
+  local hidden_channel = vim.b[buffer].terminal_job_id
+  vim.api.nvim_set_current_buf(work_buffer)
+  assert(vim.api.nvim_get_current_tabpage() == git_tab, "file click should reuse the Git tab")
+  assert(vim.api.nvim_buf_is_valid(buffer), "file-buffer click deleted the Git terminal")
+  assert(vim.fn.jobwait({ hidden_channel }, 0)[1] == -1, "hiding the Git terminal stopped its process")
+  vim.api.nvim_set_current_buf(buffer)
+  vim.fn.chansend(hidden_channel, "quit\r")
+  assert(vim.wait(5000, function() return not vim.api.nvim_buf_is_valid(buffer) end))
+  assert(vim.api.nvim_get_current_buf() == work_buffer, "normal exit did not return to the editing buffer")
+  assert(vim.api.nvim_buf_get_lines(work_buffer, 0, -1, false)[1] == "unsaved file buffer")
+  assert(vim.bo[work_buffer].modified, "normal exit lost the file's modified flag")
+
   -- Quitting in the background must not steal focus or erase another tab.
   git.open()
   buffer = vim.api.nvim_get_current_buf()
