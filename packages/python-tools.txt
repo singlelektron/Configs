@@ -1,0 +1,3 @@
+# Independent CLI environments, installed with uv tool install.
+basedpyright==1.40.1
+ruff==0.16.9

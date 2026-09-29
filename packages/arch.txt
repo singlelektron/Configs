@@ -1,0 +1,13 @@
+# Official packages only; no AUR helper required.
+git
+github-cli
+python
+neovim
+kitty
+ripgrep
+fd
+uv
+texlab
+ttf-jetbrains-mono-nerd
+wl-clipboard
+xclip
