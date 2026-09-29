@@ -4,6 +4,20 @@ local initialized = false
 local function specs()
   return {
     {
+      "nvim-tree/nvim-tree.lua",
+      lazy = false,
+      keys = {
+        { "<leader>e", function() require("dotfiles.tree").toggle() end, desc = "Toggle files sidebar" },
+        { "<leader>E", function() require("dotfiles.tree").reveal() end, desc = "Reveal current file" },
+      },
+      config = function() require("dotfiles.tree").setup() end,
+    },
+    {
+      "nvim-lualine/lualine.nvim",
+      lazy = false,
+      config = function() require("dotfiles.ui").setup() end,
+    },
+    {
       "neovim/nvim-lspconfig",
       lazy = false,
       config = function()

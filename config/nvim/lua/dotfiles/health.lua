@@ -9,7 +9,7 @@ function M.check()
     health.error("Neovim >= 0.11.3 is required for native LSP configuration")
   end
   local root = vim.fn.stdpath("data") .. "/dotfiles-lazy"
-  for _, name in ipairs({ "lazy.nvim", "nvim-lspconfig", "mini.pick", "gitsigns.nvim", "vim-fugitive", "vimtex" }) do
+  for _, name in ipairs({ "lazy.nvim", "nvim-lspconfig", "mini.pick", "gitsigns.nvim", "vim-fugitive", "vimtex", "nvim-tree.lua", "lualine.nvim" }) do
     if vim.uv.fs_stat(root .. "/" .. name .. "/.git") then
       health.ok(name .. " installed")
     else
@@ -17,7 +17,7 @@ function M.check()
     end
   end
   health.start("External tools (install outside Neovim)")
-  for _, tool in ipairs({ "git", "rg", "fd", "rust-analyzer", "basedpyright-langserver", "ruff", "texlab", "latexmk" }) do
+  for _, tool in ipairs({ "git", "lazygit", "rg", "fd", "rust-analyzer", "basedpyright-langserver", "ruff", "texlab", "latexmk" }) do
     if vim.fn.executable(tool) == 1 then
       if tool == "rust-analyzer" then
         local result = vim.system({ tool, "--version" }, { text = true }):wait(5000)

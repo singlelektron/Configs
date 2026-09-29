@@ -1,6 +1,7 @@
 # Official packages only; no AUR helper required.
 git
 github-cli
+lazygit
 python
 neovim
 kitty

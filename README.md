@@ -1,9 +1,10 @@
 # Personal dotfiles
 
-macOS 与 Arch Linux 共用的 Kitty / Neovim 配置。优先原生编辑习惯、少量依赖和可回滚部署。
+macOS 与 Arch Linux 共用的 Kitty / Neovim 配置。支持鼠标和原生 Vim 操作，部署可回滚。
 
-- Kitty：沿用 Catppuccin Mocha 与 JetBrains Mono，不透明背景，少量留白，标准快捷键。
-- Neovim ≥ 0.11.3：原生 LSP / 补全、文件与文本检索、Git、LaTeX；5 个功能插件加 lazy.nvim。
+- Kitty：深蓝灰底色、青色重点提示、88% 不透明度、JetBrains Mono 和简洁标签栏。
+- Neovim ≥ 0.11.3：左侧文件树、可点击文件标签与 Git 入口、原生 LSP / 补全；7 个功能插件加 lazy.nvim。
+- Git：文件树与状态栏显示改动；LazyGit 提供鼠标友好的管理界面，保留 Fugitive 和命令行。
 - Rust：rust-analyzer；Python：basedpyright + Ruff；LaTeX：texlab + VimTeX；Markdown：原生编辑，可选 Marksman。
 - AI agent 在独立终端工作；Neovim 检查外部文件变化，保留有未保存修改时的冲突提示。
 - 本地差异放在仓库外，旧配置和 Neovim 插件数据保留。暂不管理 shell、SSH、Git 身份或桌面会话。
@@ -53,13 +54,15 @@ Neovim 也会为这两个标准目录补充 PATH，因此非交互 SSH 启动仍
 
 | 按键 / 命令 | 功能 |
 | --- | --- |
+| `Space e` / `Space E` | 切换左侧文件树 / 在树中定位当前文件 |
 | `Space ff` / `fg` / `fb` / `fh` | 找文件 / 搜索文本 / 缓冲区 / 帮助 |
 | `gd`、`K` | 定义、悬浮信息 |
 | `grn` / `gra` / `grr` / `gri` | 原生重命名 / 代码操作 / 引用 / 实现 |
 | `Ctrl-x Ctrl-o` | 原生 LSP 补全；`Ctrl-n/p` 选择，`Ctrl-y` 接受 |
-| `[d` / `]d`、`Space e` / `q` | 诊断跳转、详情 / location list |
+| `[d` / `]d`、`Space d` / `q` | 诊断跳转、详情 / location list |
 | `Space cf` | 显式格式化（Python 使用 Ruff，Rust 使用 rust-analyzer） |
 | `Space gs`、`:Git`、`:Gdiffsplit` | Git 状态、命令、diff |
+| `Space gg` / `:DotfilesGit` | 在专用终端标签页打开 LazyGit；退出后返回编辑器 |
 | `[c` / `]c`、`Space hp` | Git 修改跳转、预览修改块 |
 | `Space y` / `Space Y` | 复制选区 / 整行到系统剪贴板 |
 | `Space us` | 英文拼写检查开关，默认关闭 |
@@ -72,8 +75,20 @@ Python 优先采用项目根目录 `.venv/bin/python`，然后是已激活虚拟
 Rust 保留 rust-analyzer 的标准 Cargo 检查、构建脚本和过程宏分析。
 文件和文本检索使用当前工作目录；从项目目录启动 `nvim`，或用 `:cd` 切换范围。
 
-Kitty 保留 `Ctrl-Shift-C/V` 复制粘贴、`Ctrl-Shift-Enter` 新窗口、`Ctrl-Shift-T` 新标签，
-后两者继承当前目录；macOS 的 Command 快捷键仍可用。配置更新后可用 `Ctrl-Shift-F5` 重载。
+文件树默认在普通编辑会话打开；单击选择，双击打开文件或展开目录，拖动分隔线调整宽度。
+滚轮滚动当前区域，顶部标签可以点击切换文件，`Files` 按钮切换侧栏。
+树中 `a` 新建、`r` 重命名、`d` 删除（保留确认）、`H` 切换点文件、`I` 切换 Git 忽略文件、`g?` 查看帮助。
+Git 提交消息、diff 模式、管道输入和无界面启动不会自动展开文件树。
+
+顶部 `Git` 打开 LazyGit，`Diff` 对当前受跟踪文件打开差异；点击底部分支名称打开 Fugitive 状态页。
+LazyGit 支持点击面板、文件、提交和底部操作提示；`Space` 暂存/取消暂存，`c` 提交，`q` 退出。
+自动 fetch、自动推进其他分支和自动暂存冲突解决均关闭，具体 Git 操作由你发起。
+
+Kitty 使用 `Ctrl-Shift-C/V` 复制粘贴、`Ctrl-Shift-Enter` 新窗口、`Ctrl-Shift-T` 新标签，
+`Ctrl-Shift-G` 在当前目录打开 LazyGit 标签。macOS 的 Command 快捷键仍可用。
+两处 Git 入口显式读取同一个 `~/.config/lazygit/config.yml`（支持 XDG），不依赖 macOS 的默认配置路径。
+Neovim 内拖选会进入 Vim 选择；按住 Shift 拖选可使用 Kitty 的终端文本选择。右键提供 Neovim 原生菜单。
+修改透明度后建议重启 Kitty；后续可以用 `Ctrl-Shift-F5` 重载配置。
 
 ## 远端使用
 
@@ -99,7 +114,7 @@ SSH 下 `Space y` 通过 OSC 52 复制到本机；粘贴用 Kitty 的粘贴快�
 ```
 
 设置了 `XDG_CONFIG_HOME` 时使用它替代 `~/.config`。
-部署器只链接 Kitty 的三个受管文件和整个 Neovim 配置目录，保留 Kitty 其他文件。
+部署器只链接 Kitty 的三个受管文件、整个 Neovim 配置目录和 LazyGit 的单个配置文件，保留其他状态文件。
 若目标已存在，先整体移入 `${XDG_STATE_HOME:-~/.local/state}/dotfiles/backups/<id>/`，
 权限为仅当前用户访问，并写入恢复清单。重复部署没有额外副作用。
 
@@ -111,6 +126,7 @@ python3 scripts/deploy.py --restore /absolute/path/to/backup-id --apply
 
 恢复会移除本次创建的链接并放回原件；发现目标被换成新文件时会停止，不覆盖新修改。
 部署中断也保留清单和原件，可用同一命令恢复。
+如果分多次增加受管应用（例如后来加入 LazyGit），完整撤销时按备份时间倒序恢复。
 链接指向本仓库：编辑受管文件就是编辑仓库文件，恢复旧配置不会撤销这些 Git 修改。
 部署器拒绝符号链接父目录；若使用自定义 XDG 路径，请先提供真实绝对路径。
 不要移动或删除正在使用的仓库目录；需要搬迁时保留旧目录、从新位置重新部署并检查链接。
@@ -145,6 +161,7 @@ Markdown 跨文件链接补全可选安装 Marksman：`brew install marksman` �
 ```text
 config/kitty/         共享终端配置
 config/nvim/          共享编辑器配置和插件锁
+config/lazygit/       共享 Git 管理界面配置（不包含历史和状态）
 platforms/macos/      macOS 差异
 platforms/linux/      Linux 差异，预留 Niri 扩展位置
 packages/             平台软件清单、Python CLI 版本
@@ -161,4 +178,5 @@ Python 工具升级要修改版本清单并重跑安装；系统包仍由 Homebr
 提交前运行 `git diff --cached`。`.gitignore` 只是辅助，不能代替检查：不要加入 SSH/GPG 密钥、
 Token、`.env`、AI 登录配置、会话历史、撤销文件、缓存、Git 身份和绝对本机路径。
 
-初始选型见 [环境审计](docs/environment-audit.md)，实测范围与复测命令见 [验证记录](docs/validation.md)。
+初始选型见 [环境审计](docs/environment-audit.md)，外观约定见 [统一风格](docs/style.md)，
+实测范围与复测命令见 [验证记录](docs/validation.md)。

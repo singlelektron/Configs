@@ -26,7 +26,8 @@ class DeploymentTests(unittest.TestCase):
         self.home = self.root / "home"
         self.config, self.state = deploy.locations(self.home)
         for name in ("config/kitty/kitty.conf", "config/kitty/theme.conf",
-                     "config/nvim/init.lua", "platforms/macos/kitty.conf", "platforms/linux/kitty.conf"):
+                     "config/nvim/init.lua", "config/lazygit/config.yml",
+                     "platforms/macos/kitty.conf", "platforms/linux/kitty.conf"):
             path = self.repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(name, encoding="utf-8")
@@ -85,6 +86,16 @@ class DeploymentTests(unittest.TestCase):
     def test_macos_platform_selection(self):
         self.install(platform="macos")
         self.assertEqual(os.readlink(self.config / "kitty/platform.conf"), str(self.repo / "platforms/macos/kitty.conf"))
+
+    def test_lazygit_config_restore_preserves_private_state(self):
+        config = self.original("lazygit/config.yml", "personal Git UI")
+        state = self.original("lazygit/state.yml", "private history")
+        backup = self.install()
+        self.assertTrue(config.is_symlink())
+        self.assertEqual(state.read_text(), "private history")
+        deploy.restore(backup, apply=True)
+        self.assertEqual(config.read_text(), "personal Git UI")
+        self.assertEqual(state.read_text(), "private history")
 
     def test_global_preflight_rejects_symlinked_parent(self):
         outside = self.root / "outside"

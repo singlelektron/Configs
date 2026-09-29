@@ -83,7 +83,7 @@ local function test()
       count = count + 1
       assert(plugin._.installed, plugin.name .. " missing")
     end
-    assert(count == 6, "expect five functional plugins and lazy.nvim")
+    assert(count == 8, "expect seven functional plugins and lazy.nvim")
     assert(type(require("mini.pick").builtin.files) == "function", "picker failed to load")
     assert(vim.g.vimtex_compiler_latexmk.continuous == 0, "LaTeX must compile only on request")
     assert(vim.g.vimtex_view_automatic == 0, "PDF viewer must open only on request")

@@ -10,6 +10,7 @@ opt.sidescrolloff = 4
 opt.splitbelow = true
 opt.splitright = true
 opt.mouse = "a"
+opt.mousemodel = "popup_setpos"
 opt.ignorecase = true
 opt.smartcase = true
 opt.expandtab = true
@@ -27,6 +28,8 @@ opt.spell = false
 -- Keep clipboard use explicit: ordinary y/d/p retain Vim register semantics.
 opt.clipboard = ""
 vim.cmd.colorscheme("habamax")
+require("dotfiles.ui").apply_palette()
+require("dotfiles.git").setup()
 
 -- SSH copies go to the client terminal. Paste with the terminal's paste key;
 -- querying the remote clipboard via OSC 52 can block or require permission.
@@ -46,7 +49,7 @@ local map = vim.keymap.set
 map("n", "<Esc>", "<cmd>nohlsearch<CR>", { desc = "Clear search highlight" })
 map({ "n", "x" }, "<leader>y", '"+y', { desc = "Copy to system clipboard" })
 map("n", "<leader>Y", '"+Y', { desc = "Copy line to system clipboard" })
-map("n", "<leader>e", vim.diagnostic.open_float, { desc = "Diagnostic details" })
+map("n", "<leader>d", vim.diagnostic.open_float, { desc = "Diagnostic details" })
 map("n", "<leader>q", vim.diagnostic.setloclist, { desc = "Diagnostics to location list" })
 map("n", "<leader>us", function()
   vim.wo.spell = not vim.wo.spell

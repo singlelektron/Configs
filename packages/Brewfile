@@ -1,6 +1,7 @@
 # Minimal workstation tools; keep project dependencies in each project.
 brew "git"
 brew "gh"
+brew "lazygit"
 brew "python"
 brew "neovim"
 brew "ripgrep"

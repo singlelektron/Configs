@@ -23,6 +23,7 @@ def main():
         ("rg", ["--version"]),
         ("fd", ["--version"]),
         ("gh", ["--version"]),
+        ("lazygit", ["--version"]),
         ("uv", ["--version"]),
         ("rustc", ["--version"]),
         ("rust-analyzer", ["--version"]),
@@ -59,6 +60,7 @@ def main():
         "kitty/theme.conf": repo / "config/kitty/theme.conf",
         "kitty/platform.conf": repo / "platforms" / system / "kitty.conf",
         "nvim": repo / "config/nvim",
+        "lazygit/config.yml": repo / "config/lazygit/config.yml",
     }
     for relative, source in links.items():
         target = config / relative

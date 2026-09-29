@@ -78,6 +78,7 @@ def entries_for(repo, config, platform):
         (config / "kitty/theme.conf", repo / "config/kitty/theme.conf"),
         (config / "kitty/platform.conf", repo / f"platforms/{platform}/kitty.conf"),
         (config / "nvim", repo / "config/nvim"),
+        (config / "lazygit/config.yml", repo / "config/lazygit/config.yml"),
     ]
 
 
