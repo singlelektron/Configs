@@ -131,8 +131,10 @@ SSH 下 `Space y` 通过 OSC 52 复制到本机；粘贴用 Kitty 的粘贴快�
 
 设置了 `XDG_CONFIG_HOME` 时使用它替代 `~/.config`。
 部署器只链接 Kitty 的三个受管文件、整个 Neovim 配置目录和 LazyGit 的单个配置文件，保留其他状态文件。
-若目标已存在，先整体移入 `${XDG_STATE_HOME:-~/.local/state}/dotfiles/backups/<id>/`，
+若目标已存在，先备份到 `${XDG_STATE_HOME:-~/.local/state}/dotfiles/backups/<id>/`，
 权限为仅当前用户访问，并写入恢复清单。重复部署没有额外副作用。
+配置与状态目录可位于不同文件系统：先完成副本，再移除源件；文件、目录和符号链接均受支持。
+跨文件系统复制保留内容、权限与可复制的时间信息，不保证所有 ACL、所有者或平台扩展元数据。
 
 ```sh
 # 使用部署完成时打印的真实绝对目录；先预览，再执行。

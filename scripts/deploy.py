@@ -2,10 +2,12 @@
 """Link this checkout's configs; keep recoverable originals outside the repo."""
 
 import argparse
+import errno
 import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import stat
 import sys
 import tempfile
@@ -93,6 +95,52 @@ def save_manifest(directory, manifest):
     temporary.replace(directory / "manifest.json")
 
 
+def move_preserving(source, target, prepare=None):
+    """Move an original, publishing only complete copies when rename hits EXDEV.
+
+    prepare records the candidate's identity before publication so an interrupted
+    restore can recognize its new inode after a cross-filesystem copy.
+    """
+    if snapshot(target) is not None:
+        raise DeploymentError(f"Destination changed during move: {target}")
+    if prepare:
+        prepare(source)
+    if snapshot(target) is not None:
+        raise DeploymentError(f"Destination changed during move: {target}")
+    try:
+        source.rename(target)
+        return
+    except OSError as error:
+        if error.errno != errno.EXDEV:
+            raise
+
+    # Staging is on the destination filesystem and private. A failed copy never
+    # leaves a partial object at the backup/restore path or removes the source.
+    original = snapshot(source)
+    with tempfile.TemporaryDirectory(prefix=".dotfiles-move-", dir=target.parent) as staging:
+        candidate = Path(staging) / "original"
+        if source.is_symlink():
+            shutil.copy2(source, candidate, follow_symlinks=False)
+        elif source.is_dir():
+            shutil.copytree(source, candidate, symlinks=True)
+        else:
+            shutil.copy2(source, candidate, follow_symlinks=False)
+        if snapshot(source) != original:
+            raise DeploymentError(f"Source changed during copy: {source}")
+        if prepare:
+            prepare(candidate)
+        if snapshot(target) is not None:
+            raise DeploymentError(f"Destination changed during move: {target}")
+        candidate.rename(target)
+        # The complete destination is recoverable even if source removal fails.
+        if snapshot(source) != original:
+            raise DeploymentError(f"Source changed during copy: {source}")
+        if source.is_symlink() or not source.is_dir():
+            source.unlink()
+        else:
+            shutil.rmtree(source)
+
+
 def install(repo, config, state, platform, apply=False):
     repo = repo.resolve()
     pairs = entries_for(repo, config, platform)
@@ -143,7 +191,7 @@ def install(repo, config, state, platform, apply=False):
                 raise DeploymentError(f"Destination changed during deployment: {target}")
             target.parent.mkdir(parents=True, exist_ok=True)
             if entry["backup"]:
-                target.rename(directory / entry["backup"])
+                move_preserving(target, directory / entry["backup"])
             # Exclusive creation: an intervening file is never overwritten.
             target.symlink_to(source, target_is_directory=source.is_dir())
     except (OSError, DeploymentError) as error:
@@ -179,6 +227,10 @@ def load_manifest(directory):
             if original is not None and (not isinstance(original, dict) or
                                          original.get("kind") not in ("file", "directory", "symlink")):
                 raise ValueError("invalid original snapshot")
+            if "restored_original" in entry:
+                restored = entry["restored_original"]
+                if original is None or not isinstance(restored, dict) or restored.get("kind") != original["kind"]:
+                    raise ValueError("invalid restored snapshot")
             expected_backup = f"{index:02d}-{Path(target).name}" if original else None
             if entry["backup"] != expected_backup:
                 raise ValueError("invalid backup path")
@@ -193,6 +245,11 @@ def restore_action(directory, entry):
     original = entry["original"]
     backup = directory / entry["backup"] if entry["backup"] else None
     current = snapshot(target)
+    restored = entry.get("restored_original")
+    if original is not None and (current == original or (restored is not None and current == restored)):
+        # An interrupted copy may leave both copies. Keep any duplicate backup;
+        # never overwrite an original or a successfully published restore.
+        return "none"
     if backup is not None and snapshot(backup) is not None:
         if current is not None and not owns_link(target, source):
             raise DeploymentError(f"Restore conflict; destination contains intervening changes: {target}")
@@ -203,9 +260,6 @@ def restore_action(directory, entry):
         if owns_link(target, source):
             return "remove"
         raise DeploymentError(f"Restore conflict; destination contains intervening changes: {target}")
-    if current == original:
-        # Not reached during a failed install, or already restored before an interruption.
-        return "none"
     raise DeploymentError(f"Restore conflict; original backup is missing: {target}")
 
 
@@ -237,7 +291,11 @@ def restore(directory, apply=False):
                 # Refuse an intervening path instead of replacing user data.
                 if snapshot(target) is not None:
                     raise DeploymentError(f"Destination changed during restore: {target}")
-                (directory / entry["backup"]).rename(target)
+                def record_restored(candidate):
+                    entry["restored_original"] = snapshot(candidate)
+                    save_manifest(directory, manifest)
+
+                move_preserving(directory / entry["backup"], target, prepare=record_restored)
         manifest["restored"] = True
         save_manifest(directory, manifest)
     except (OSError, DeploymentError) as error:

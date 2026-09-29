@@ -1,6 +1,7 @@
 """Exercise deployment against disposable homes, never the current user's files."""
 
 import contextlib
+import errno
 import importlib.util
 import io
 import json
@@ -43,6 +44,25 @@ class DeploymentTests(unittest.TestCase):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(contents, encoding="utf-8")
         return path
+
+    @contextlib.contextmanager
+    def cross_device_moves(self):
+        """Model split XDG filesystems while allowing local staging renames."""
+        rename = Path.rename
+
+        def cross_device(path, target):
+            target = Path(target)
+            between_roots = (
+                deploy.within(path, self.config) and deploy.within(target, self.state)
+            ) or (
+                deploy.within(path, self.state) and deploy.within(target, self.config)
+            )
+            if between_roots:
+                raise OSError(errno.EXDEV, "simulated cross-device move")
+            return rename(path, target)
+
+        with mock.patch.object(Path, "rename", cross_device):
+            yield
 
     def test_dry_run_creates_nothing(self):
         self.install(apply=False)
@@ -210,13 +230,194 @@ class DeploymentTests(unittest.TestCase):
     def test_restore_can_resume_after_interrupted_manifest_write(self):
         kitty = self.original("kitty/kitty.conf")
         backup = self.install()
-        with mock.patch.object(deploy, "save_manifest", side_effect=OSError("simulated write failure")):
+        save_manifest = deploy.save_manifest
+
+        def fail_final_write(directory, manifest):
+            if manifest["restored"]:
+                raise OSError("simulated write failure")
+            return save_manifest(directory, manifest)
+
+        with mock.patch.object(deploy, "save_manifest", fail_final_write):
             with self.assertRaisesRegex(deploy.DeploymentError, "Restore stopped"):
                 deploy.restore(backup, apply=True)
         self.assertEqual(kitty.read_text(), "original")
         deploy.restore(backup, apply=True)
         self.assertEqual(kitty.read_text(), "original")
         self.assertTrue(json.loads((backup / "manifest.json").read_text())["restored"])
+
+    def test_cross_device_backup_and_restore_preserve_files_and_symlinks(self):
+        kitty = self.original("kitty/kitty.conf", "personal Kitty")
+        kitty.chmod(0o640)
+        os.utime(kitty, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
+        kitty_before = deploy.snapshot(kitty)
+        theme = self.config / "kitty/theme.conf"
+        theme.symlink_to("missing-theme")
+        init = self.original("nvim/init.lua", "personal Neovim")
+        init.chmod(0o600)
+        (init.parent / "linked.lua").symlink_to("init.lua")
+        (init.parent / "missing.lua").symlink_to("missing-original")
+        (init.parent / "cycle").symlink_to(".", target_is_directory=True)
+
+        with self.cross_device_moves():
+            backup = self.install()
+            self.assertEqual((backup / "00-kitty.conf").read_text(), "personal Kitty")
+            self.assertEqual(os.readlink(backup / "01-theme.conf"), "missing-theme")
+            self.assertEqual(os.readlink(backup / "03-nvim/missing.lua"), "missing-original")
+            self.assertEqual(os.readlink(backup / "03-nvim/cycle"), ".")
+            deploy.restore(backup, apply=True)
+
+        self.assertEqual(kitty.read_text(), "personal Kitty")
+        self.assertEqual(stat.S_IMODE(kitty.stat().st_mode), 0o640)
+        self.assertEqual(kitty.stat().st_mtime_ns, kitty_before["mtime_ns"])
+        self.assertEqual(os.readlink(theme), "missing-theme")
+        self.assertFalse(theme.exists())
+        self.assertEqual(init.read_text(), "personal Neovim")
+        self.assertEqual(stat.S_IMODE(init.stat().st_mode), 0o600)
+        self.assertEqual(os.readlink(init.parent / "linked.lua"), "init.lua")
+        self.assertEqual(os.readlink(init.parent / "missing.lua"), "missing-original")
+        self.assertEqual(os.readlink(init.parent / "cycle"), ".")
+
+    def test_cross_device_copy_failure_keeps_original_and_hides_partial_backup(self):
+        init = self.original("nvim/init.lua", "personal Neovim")
+
+        def partial_copy(source, target, **kwargs):
+            Path(target).mkdir()
+            (Path(target) / "incomplete").write_text("partial copy")
+            raise OSError("simulated copy failure")
+
+        with self.cross_device_moves(), mock.patch.object(deploy.shutil, "copytree", partial_copy):
+            with self.assertRaisesRegex(deploy.DeploymentError, "simulated copy failure"):
+                self.install()
+        backup = next((self.state / "dotfiles/backups").iterdir())
+        self.assertEqual(init.read_text(), "personal Neovim")
+        self.assertIsNone(deploy.snapshot(backup / "03-nvim"))
+        self.assertFalse(list(backup.glob(".dotfiles-move-*")))
+        deploy.restore(backup, apply=True)
+        self.assertEqual(init.read_text(), "personal Neovim")
+        self.assertFalse((self.config / "kitty/kitty.conf").is_symlink())
+
+    def test_cross_device_backup_cleanup_failure_can_restore_with_both_copies(self):
+        init = self.original("nvim/init.lua", "personal Neovim")
+        rmtree = deploy.shutil.rmtree
+
+        def fail_original_cleanup(path, *args, **kwargs):
+            if Path(path) == init.parent:
+                raise OSError("simulated source cleanup failure")
+            return rmtree(path, *args, **kwargs)
+
+        with self.cross_device_moves(), mock.patch.object(deploy.shutil, "rmtree", fail_original_cleanup):
+            with self.assertRaisesRegex(deploy.DeploymentError, "simulated source cleanup failure"):
+                self.install()
+        backup = next((self.state / "dotfiles/backups").iterdir())
+        self.assertEqual(init.read_text(), "personal Neovim")
+        self.assertEqual((backup / "03-nvim/init.lua").read_text(), "personal Neovim")
+        deploy.restore(backup, apply=True)
+        self.assertEqual(init.read_text(), "personal Neovim")
+        self.assertTrue(json.loads((backup / "manifest.json").read_text())["restored"])
+
+    def test_cross_device_restore_prepare_write_failure_keeps_backup_for_retry(self):
+        kitty = self.original("kitty/kitty.conf")
+        with self.cross_device_moves():
+            backup = self.install()
+        save_manifest = deploy.save_manifest
+        backup_inode = deploy.snapshot(backup / "00-kitty.conf")["inode"]
+
+        def fail_staging_snapshot(directory, manifest):
+            candidate = manifest["entries"][0].get("restored_original")
+            if candidate and candidate["inode"] != backup_inode:
+                raise OSError("simulated prepare write failure")
+            return save_manifest(directory, manifest)
+
+        with self.cross_device_moves(), mock.patch.object(deploy, "save_manifest", fail_staging_snapshot):
+            with self.assertRaisesRegex(deploy.DeploymentError, "simulated prepare write failure"):
+                deploy.restore(backup, apply=True)
+        self.assertEqual((backup / "00-kitty.conf").read_text(), "original")
+        self.assertIsNone(deploy.snapshot(kitty))
+        self.assertFalse(list(kitty.parent.glob(".dotfiles-move-*")))
+        with self.cross_device_moves():
+            deploy.restore(backup, apply=True)
+        self.assertEqual(kitty.read_text(), "original")
+
+    def test_cross_device_restore_resumes_after_final_manifest_write_failure(self):
+        kitty = self.original("kitty/kitty.conf")
+        before = deploy.snapshot(kitty)
+        with self.cross_device_moves():
+            backup = self.install()
+        save_manifest = deploy.save_manifest
+
+        def fail_final_write(directory, manifest):
+            if manifest["restored"]:
+                raise OSError("simulated final write failure")
+            return save_manifest(directory, manifest)
+
+        with self.cross_device_moves(), mock.patch.object(deploy, "save_manifest", fail_final_write):
+            with self.assertRaisesRegex(deploy.DeploymentError, "simulated final write failure"):
+                deploy.restore(backup, apply=True)
+        self.assertEqual(kitty.read_text(), "original")
+        self.assertNotEqual(deploy.snapshot(kitty), before)
+        self.assertIsNone(deploy.snapshot(backup / "00-kitty.conf"))
+        manifest = json.loads((backup / "manifest.json").read_text())
+        self.assertFalse(manifest["restored"])
+        self.assertEqual(manifest["entries"][0]["restored_original"], deploy.snapshot(kitty))
+        with self.cross_device_moves():
+            deploy.restore(backup, apply=True)
+        self.assertEqual(kitty.read_text(), "original")
+        self.assertTrue(json.loads((backup / "manifest.json").read_text())["restored"])
+
+    def test_cross_device_restore_cleanup_failure_can_resume_with_both_copies(self):
+        init = self.original("nvim/init.lua", "personal Neovim")
+        with self.cross_device_moves():
+            backup = self.install()
+        rmtree = deploy.shutil.rmtree
+
+        def fail_backup_cleanup(path, *args, **kwargs):
+            if Path(path) == backup / "03-nvim":
+                raise OSError("simulated backup cleanup failure")
+            return rmtree(path, *args, **kwargs)
+
+        with self.cross_device_moves(), mock.patch.object(deploy.shutil, "rmtree", fail_backup_cleanup):
+            with self.assertRaisesRegex(deploy.DeploymentError, "simulated backup cleanup failure"):
+                deploy.restore(backup, apply=True)
+        self.assertEqual(init.read_text(), "personal Neovim")
+        self.assertEqual((backup / "03-nvim/init.lua").read_text(), "personal Neovim")
+        with self.cross_device_moves():
+            deploy.restore(backup, apply=True)
+        self.assertEqual(init.read_text(), "personal Neovim")
+        self.assertTrue(json.loads((backup / "manifest.json").read_text())["restored"])
+
+    def test_non_cross_device_rename_error_does_not_copy_original(self):
+        kitty = self.original("kitty/kitty.conf")
+        with mock.patch.object(Path, "rename", side_effect=OSError(errno.EACCES, "simulated denied rename")), \
+                mock.patch.object(deploy.shutil, "copy2") as copy:
+            with self.assertRaisesRegex(deploy.DeploymentError, "simulated denied rename"):
+                self.install()
+        copy.assert_not_called()
+        self.assertEqual(kitty.read_text(), "original")
+        backup = next((self.state / "dotfiles/backups").iterdir())
+        self.assertIsNone(deploy.snapshot(backup / "00-kitty.conf"))
+        deploy.restore(backup, apply=True)
+        self.assertEqual(kitty.read_text(), "original")
+
+    def test_cross_device_move_keeps_source_edited_before_cleanup(self):
+        kitty = self.original("kitty/kitty.conf")
+        with self.cross_device_moves():
+            rename = Path.rename
+
+            def edit_after_publication(path, target):
+                result = rename(path, target)
+                if path.name == "original" and Path(target).name == "00-kitty.conf":
+                    kitty.write_text("new user work during copy")
+                return result
+
+            with mock.patch.object(Path, "rename", edit_after_publication):
+                with self.assertRaisesRegex(deploy.DeploymentError, "Source changed during copy"):
+                    self.install()
+        backup = next((self.state / "dotfiles/backups").iterdir())
+        self.assertEqual(kitty.read_text(), "new user work during copy")
+        self.assertEqual((backup / "00-kitty.conf").read_text(), "original")
+        with self.assertRaisesRegex(deploy.DeploymentError, "intervening changes"):
+            deploy.restore(backup, apply=True)
+        self.assertEqual(kitty.read_text(), "new user work during copy")
 
     def test_manifest_path_traversal_is_rejected(self):
         self.original("kitty/kitty.conf")
