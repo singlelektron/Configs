@@ -1,0 +1,49 @@
+# 统一视觉与鼠标工作流
+
+设计方向是深蓝灰、少量青色、细分隔线和稳定的布局，不使用渐变文字、发光边框或复杂仪表盘。
+Kitty、Neovim 与 LazyGit 共用以下颜色；将来配置 Niri、状态栏和启动器时沿用这些约定。
+
+| 用途 | 颜色 / 尺寸 |
+| --- | --- |
+| 主背景 | `#161b26` |
+| 侧栏、菜单、状态栏 | `#1b2230` |
+| 正文 | `#d6deeb` |
+| 次要信息 | `#8a97ad` |
+| 活动窗口 / 当前操作 | `#67d4e8` |
+| 链接 / 函数 / 修改提示 | `#82aaff` |
+| 新增 / 删除 / 警告 | `#9ece6a` / `#f7768e` / `#e0af68` |
+| 非活动边框 | `#344155` |
+| 编辑器选区 | `#25364a` |
+| Kitty 不透明度 / 内边距 | `0.88` / `8` |
+| 文件树默认宽度 | 30 字符，可拖动 |
+
+编辑区背景不指定实色，继承 Kitty 的半透明背景。侧栏与浮动菜单使用实色保持文件名、
+菜单和诊断的可读性。macOS 使用轻量背景模糊；Linux 当前不强制模糊，不假定未来 Niri
+支持某种特定模糊协议。Kitty 的透明与模糊能力见[官方配置说明](https://sw.kovidgoyal.net/kitty/conf/#opt-kitty.background_opacity)。
+
+未来 Niri 的布局建议沿用 8–12 像素间距、青色活动边框、弱化非活动边框和轻微圆角，
+具体输出缩放、边框宽度和输入设备届时按实际显示器配置。本次不启用或切换桌面会话。
+
+微调透明度只需在本机 `~/.config/dotfiles-local/kitty.conf` 写入例如
+`background_opacity 0.92`；提高数值能改善明亮或复杂壁纸上的对比度。
+颜色集中在 `config/kitty/theme.conf`、`config/nvim/lua/dotfiles/ui.lua` 和
+`config/lazygit/config.yml`。刻意保持三个小型静态配置，不额外引入主题生成器。
+
+鼠标流程：点击文件树 → 双击文件 → 点击顶部标签切换 → 点击 Git 管理改动 → `q` 返回编辑。
+键盘流程与鼠标并存：原生窗口、缓冲区和寄存器操作保持原样，文件树和 Git 也有快捷键。
+
+## 终端颜色与配置不同
+
+Shell 启动脚本也能通过 OSC 转义序列改写终端颜色。此次 Arch 的 Nyarch / pywal
+在 `.bashrc` 中加载 `~/.cache/wal/sequences`，把共享深蓝灰覆盖成暖棕色。
+本机已备份并修正该加载条件，使 Kitty 使用仓库配色；shell 配置本身不纳入仓库。
+如果新机器使用相同的桌面主题工具，可将原有 pywal 加载块限定为：
+
+```bash
+if [[ -z "${KITTY_WINDOW_ID:-}" && "${TERM:-}" != "xterm-kitty" && -f "$HOME/.cache/wal/sequences" ]]; then
+    cat "$HOME/.cache/wal/sequences"
+fi
+```
+
+修改后在 Kitty 按 `Ctrl-Shift-F5` 重载配置，或打开新窗口。相同颜色与不透明度仍会叠加
+不同壁纸；macOS 的背景模糊与 Linux 合成器也可能呈现不同效果，因此不能保证像素颜色完全相同。

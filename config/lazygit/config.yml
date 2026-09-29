@@ -1,0 +1,18 @@
+# Used explicitly by the Kitty shortcut and :DotfilesGit on both platforms.
+gui:
+  mouseEvents: true
+  showRandomTip: false
+  nerdFontsVersion: "3"
+  theme:
+    activeBorderColor: ["#67d4e8", bold]
+    inactiveBorderColor: ["#344155"]
+    optionsTextColor: ["#82aaff"]
+    selectedLineBgColor: ["#25364a"]
+    defaultFgColor: ["#d6deeb"]
+    unstagedChangesColor: ["#f7768e"]
+git:
+  autoFetch: false
+  autoForwardBranches: none
+  autoStageResolvedConflicts: false
+update:
+  method: never
