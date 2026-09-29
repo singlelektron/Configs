@@ -3,6 +3,7 @@
 
 import argparse
 import errno
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -34,6 +35,30 @@ def snapshot(path):
               "mtime_ns": info.st_mtime_ns}
     if kind == "symlink":
         result["destination"] = os.readlink(path)
+    return result
+
+
+def copy_snapshot(path):
+    """Fingerprint a copy source recursively without following symlinks.
+
+    Directory metadata alone cannot observe writes to existing descendants.
+    Hash file contents as well, since writers can preserve size and mtime.
+    This is transient copy validation; the v1 manifest keeps its root identity.
+    """
+    original = snapshot(path)
+    if original is None:
+        raise DeploymentError(f"Source changed during copy: {path}")
+    result = original.copy()
+    if original["kind"] == "directory":
+        result["children"] = {child.name: copy_snapshot(child) for child in path.iterdir()}
+    elif original["kind"] == "file":
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        result["sha256"] = digest.hexdigest()
+    if snapshot(path) != original:
+        raise DeploymentError(f"Source changed during copy: {path}")
     return result
 
 
@@ -116,7 +141,7 @@ def move_preserving(source, target, prepare=None):
 
     # Staging is on the destination filesystem and private. A failed copy never
     # leaves a partial object at the backup/restore path or removes the source.
-    original = snapshot(source)
+    original = copy_snapshot(source)
     with tempfile.TemporaryDirectory(prefix=".dotfiles-move-", dir=target.parent) as staging:
         candidate = Path(staging) / "original"
         if source.is_symlink():
@@ -125,7 +150,7 @@ def move_preserving(source, target, prepare=None):
             shutil.copytree(source, candidate, symlinks=True)
         else:
             shutil.copy2(source, candidate, follow_symlinks=False)
-        if snapshot(source) != original:
+        if copy_snapshot(source) != original:
             raise DeploymentError(f"Source changed during copy: {source}")
         if prepare:
             prepare(candidate)
@@ -133,7 +158,7 @@ def move_preserving(source, target, prepare=None):
             raise DeploymentError(f"Destination changed during move: {target}")
         candidate.rename(target)
         # The complete destination is recoverable even if source removal fails.
-        if snapshot(source) != original:
+        if copy_snapshot(source) != original:
             raise DeploymentError(f"Source changed during copy: {source}")
         if source.is_symlink() or not source.is_dir():
             source.unlink()

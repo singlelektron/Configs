@@ -296,6 +296,120 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(init.read_text(), "personal Neovim")
         self.assertFalse((self.config / "kitty/kitty.conf").is_symlink())
 
+    def test_cross_device_backup_keeps_nested_edits_during_copy(self):
+        for change in ("normal-edit", "same-metadata", "added-file"):
+            with self.subTest(change=change):
+                fixture = self.root / change
+                self.config, self.state = fixture / "config", fixture / "state"
+                nested = self.original("nvim/lua/personal/settings.lua", "original")
+                source = self.config / "nvim"
+                root_before = deploy.snapshot(source)
+                before = nested.stat()
+                contents = {"normal-edit": "new user work during copy",
+                            "same-metadata": "new work", "added-file": "original"}[change]
+                copytree = deploy.shutil.copytree
+
+                def edit_after_copy(path, target, *args, **kwargs):
+                    result = copytree(path, target, *args, **kwargs)
+                    if Path(path) == source:
+                        if change == "added-file":
+                            (nested.parent / "added.lua").write_text("new nested file")
+                        else:
+                            nested.write_text(contents)
+                        if change == "same-metadata":
+                            os.utime(nested, ns=(before.st_atime_ns, before.st_mtime_ns))
+                            self.assertEqual(nested.stat().st_size, before.st_size)
+                            self.assertEqual(nested.stat().st_mtime_ns, before.st_mtime_ns)
+                        self.assertEqual(deploy.snapshot(source), root_before)
+                    return result
+
+                with self.cross_device_moves(), mock.patch.object(deploy.shutil, "copytree", edit_after_copy):
+                    with self.assertRaisesRegex(deploy.DeploymentError, "Source changed during copy"):
+                        self.install()
+                backup = next((self.state / "dotfiles/backups").iterdir())
+                self.assertEqual(nested.read_text(), contents)
+                self.assertIsNone(deploy.snapshot(backup / "03-nvim"))
+                self.assertFalse(list(backup.glob(".dotfiles-move-*")))
+                deploy.restore(backup, apply=True)
+                self.assertEqual(nested.read_text(), contents)
+                if change == "added-file":
+                    self.assertEqual((nested.parent / "added.lua").read_text(), "new nested file")
+
+    def test_cross_device_backup_keeps_nested_edits_after_publication(self):
+        nested = self.original("nvim/lua/personal/settings.lua", "original")
+        source = self.config / "nvim"
+        root_before = deploy.snapshot(source)
+        with self.cross_device_moves():
+            rename = Path.rename
+
+            def edit_after_publication(path, target):
+                result = rename(path, target)
+                if path.name == "original" and Path(target).name == "03-nvim":
+                    nested.write_text("new user work before cleanup")
+                    self.assertEqual(deploy.snapshot(source), root_before)
+                return result
+
+            with mock.patch.object(Path, "rename", edit_after_publication):
+                with self.assertRaisesRegex(deploy.DeploymentError, "Source changed during copy"):
+                    self.install()
+        backup = next((self.state / "dotfiles/backups").iterdir())
+        self.assertEqual(nested.read_text(), "new user work before cleanup")
+        self.assertEqual((backup / "03-nvim/lua/personal/settings.lua").read_text(), "original")
+
+    def test_cross_device_restore_keeps_nested_backup_edits_for_retry(self):
+        nested = self.original("nvim/lua/personal/settings.lua", "original")
+        with self.cross_device_moves():
+            backup = self.install()
+        source = backup / "03-nvim"
+        backup_file = source / "lua/personal/settings.lua"
+        root_before = deploy.snapshot(source)
+        copytree = deploy.shutil.copytree
+
+        def edit_after_copy(path, target, *args, **kwargs):
+            result = copytree(path, target, *args, **kwargs)
+            if Path(path) == source:
+                backup_file.write_text("new backup content during restore")
+                self.assertEqual(deploy.snapshot(source), root_before)
+            return result
+
+        with self.cross_device_moves(), mock.patch.object(deploy.shutil, "copytree", edit_after_copy):
+            with self.assertRaisesRegex(deploy.DeploymentError, "Source changed during copy"):
+                deploy.restore(backup, apply=True)
+        self.assertEqual(backup_file.read_text(), "new backup content during restore")
+        self.assertIsNone(deploy.snapshot(self.config / "nvim"))
+        self.assertFalse(list(self.config.glob(".dotfiles-move-*")))
+        with self.cross_device_moves():
+            deploy.restore(backup, apply=True)
+        self.assertEqual(nested.read_text(), "new backup content during restore")
+        self.assertTrue(json.loads((backup / "manifest.json").read_text())["restored"])
+
+    def test_cross_device_nested_read_failure_keeps_original(self):
+        nested = self.original("nvim/lua/personal/settings.lua", "original")
+        source = self.config / "nvim"
+        copytree, open_path = deploy.shutil.copytree, Path.open
+        copied = False
+
+        def finish_copy(path, target, *args, **kwargs):
+            nonlocal copied
+            result = copytree(path, target, *args, **kwargs)
+            if Path(path) == source:
+                copied = True
+            return result
+
+        def fail_nested_read(path, *args, **kwargs):
+            if copied and path == nested:
+                raise OSError("simulated nested read failure")
+            return open_path(path, *args, **kwargs)
+
+        with self.cross_device_moves(), mock.patch.object(deploy.shutil, "copytree", finish_copy), \
+                mock.patch.object(Path, "open", fail_nested_read):
+            with self.assertRaisesRegex(deploy.DeploymentError, "simulated nested read failure"):
+                self.install()
+        backup = next((self.state / "dotfiles/backups").iterdir())
+        self.assertEqual(nested.read_text(), "original")
+        self.assertIsNone(deploy.snapshot(backup / "03-nvim"))
+        self.assertFalse(list(backup.glob(".dotfiles-move-*")))
+
     def test_cross_device_backup_cleanup_failure_can_restore_with_both_copies(self):
         init = self.original("nvim/init.lua", "personal Neovim")
         rmtree = deploy.shutil.rmtree
