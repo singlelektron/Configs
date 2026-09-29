@@ -1,0 +1,216 @@
+// Rose Observatory · Niri 26.04+. Hardware belongs in dotfiles-local/niri.kdl.
+// Mod is Super in a real session, Alt when testing in a nested window.
+input {
+    keyboard {
+        xkb {}
+        repeat-delay 300
+        repeat-rate 35
+        numlock
+    }
+    touchpad {
+        tap
+        dwt
+        natural-scroll
+    }
+    mouse { accel-profile "flat"; }
+}
+
+layout {
+    gaps 10
+    center-focused-column "on-overflow"
+    default-column-width { proportion 0.5; }
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+        proportion 1.0
+    }
+    background-color "#19151c"
+    focus-ring {
+        width 2
+        active-color "#f2a5c7"
+        inactive-color "#574254"
+        urgent-color "#e7c38c"
+    }
+    border { off; }
+    shadow {
+        on
+        softness 16
+        spread 1
+        offset x=0 y=3
+        color "#08060d70"
+    }
+}
+
+workspace "read"
+workspace "code"
+workspace "study"
+workspace "play"
+
+prefer-no-csd
+overview {
+    zoom 0.4
+    backdrop-color "#19151c"
+}
+animations { slowdown 0.85; }
+cursor {
+    xcursor-theme "Adwaita"
+    xcursor-size 24
+    // Do not hide on typing: this can disrupt Wine Wayland mouselook.
+}
+hotkey-overlay { skip-at-startup; }
+screenshot-path "~/Pictures/Screenshots/%Y-%m-%d_%H-%M-%S.png"
+
+// Fcitx5 starts through its existing XDG autostart entry. Keep native GTK IME.
+// These variables apply to apps launched by niri, including the application picker.
+environment {
+    LANG "en_US.UTF-8"
+    LC_MESSAGES "en_US.UTF-8"
+    LANGUAGE "en_US:en"
+    XMODIFIERS "@im=fcitx"
+    QT_IM_MODULES "wayland;fcitx;ibus"
+}
+
+// Helper starts services only within a real niri-session, never GNOME/nested niri.
+spawn-sh-at-startup "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" session-start"
+
+window-rule {
+    geometry-corner-radius 8
+    clip-to-geometry true
+    draw-border-with-background false
+}
+window-rule {
+    match app-id="^study-notes$"
+    open-on-workspace "study"
+    default-column-width { proportion 0.5; }
+}
+window-rule {
+    match app-id="^steam_app_"
+    open-fullscreen true
+    variable-refresh-rate true
+    geometry-corner-radius 0
+    shadow { off; }
+}
+window-rule {
+    match app-id="^gamescope$"
+    open-fullscreen true
+    variable-refresh-rate true
+    geometry-corner-radius 0
+    shadow { off; }
+}
+window-rule {
+    match app-id=r#"firefox$"# title="^(Picture-in-Picture|画中画)$"
+    open-floating true
+    default-column-width { fixed 640; }
+    default-window-height { fixed 360; }
+    default-floating-position x=20 y=20 relative-to="bottom-right"
+}
+window-rule {
+    match app-id="^(org.pulseaudio.pavucontrol|pavucontrol|nm-connection-editor|fcitx5-config-qt)$"
+    open-floating true
+}
+window-rule {
+    match app-id="^io\\.github\\.dotfiles\\.(DesktopPanel|AppLauncher)$"
+    open-floating true
+    default-column-width { fixed 680; }
+    default-window-height { fixed 720; }
+}
+
+binds {
+    Mod+Shift+Slash { show-hotkey-overlay; }
+    Mod+Return hotkey-overlay-title="Terminal · Kitty" { spawn "kitty"; }
+    Mod+T { spawn "kitty"; }
+    Mod+D hotkey-overlay-title="Applications" { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" applications"; }
+    Mod+B hotkey-overlay-title="Browser · System default" { spawn-sh "gtk-launch \"$(xdg-settings get default-web-browser)\""; }
+    Mod+E hotkey-overlay-title="Files · Nautilus" { spawn "nautilus"; }
+    Mod+N hotkey-overlay-title="Study notes · Neovim" { spawn "kitty" "--class" "study-notes" "nvim"; }
+    Mod+Shift+Space hotkey-overlay-title="Desktop controls" { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" menu"; }
+    Mod+Alt+B hotkey-overlay-title="Bar profile" { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" bar menu"; }
+    Mod+Alt+W hotkey-overlay-title="Choose wallpaper" { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" wallpaper choose"; }
+    Mod+Alt+P hotkey-overlay-title="Lecture mode · Keep awake" { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" presentation toggle"; }
+    Mod+Alt+N hotkey-overlay-title="Toggle notifications" { spawn "makoctl" "mode" "-t" "do-not-disturb"; }
+    Super+Alt+L allow-inhibiting=false hotkey-overlay-title="Lock screen" { spawn "systemctl" "--user" "start" "dotfiles-niri-lock.service"; }
+
+    Mod+Q repeat=false { close-window; }
+    Mod+O repeat=false { toggle-overview; }
+    Mod+H { focus-column-left; }
+    Mod+J { focus-window-down; }
+    Mod+K { focus-window-up; }
+    Mod+L { focus-column-right; }
+    Mod+Left { focus-column-left; }
+    Mod+Down { focus-window-down; }
+    Mod+Up { focus-window-up; }
+    Mod+Right { focus-column-right; }
+    Mod+Shift+H { move-column-left; }
+    Mod+Shift+J { move-window-down; }
+    Mod+Shift+K { move-window-up; }
+    Mod+Shift+L { move-column-right; }
+    Mod+Shift+Left { move-column-left; }
+    Mod+Shift+Down { move-window-down; }
+    Mod+Shift+Up { move-window-up; }
+    Mod+Shift+Right { move-column-right; }
+    Mod+Home { focus-column-first; }
+    Mod+End { focus-column-last; }
+    Mod+Alt+Left { focus-monitor-left; }
+    Mod+Alt+Down { focus-monitor-down; }
+    Mod+Alt+Up { focus-monitor-up; }
+    Mod+Alt+Right { focus-monitor-right; }
+    Mod+Ctrl+Alt+Left { move-column-to-monitor-left; }
+    Mod+Ctrl+Alt+Down { move-column-to-monitor-down; }
+    Mod+Ctrl+Alt+Up { move-column-to-monitor-up; }
+    Mod+Ctrl+Alt+Right { move-column-to-monitor-right; }
+
+    Mod+1 hotkey-overlay-title="Read · Documents" { focus-workspace "read"; }
+    Mod+2 hotkey-overlay-title="Code · Projects" { focus-workspace "code"; }
+    Mod+3 hotkey-overlay-title="Study · Course + notes" { focus-workspace "study"; }
+    Mod+4 hotkey-overlay-title="Play · Games" { focus-workspace "play"; }
+    Mod+Shift+1 { move-column-to-workspace "read"; }
+    Mod+Shift+2 { move-column-to-workspace "code"; }
+    Mod+Shift+3 { move-column-to-workspace "study"; }
+    Mod+Shift+4 { move-column-to-workspace "play"; }
+    Mod+Page_Up { focus-workspace-up; }
+    Mod+Page_Down { focus-workspace-down; }
+    Mod+Ctrl+Page_Up { move-column-to-workspace-up; }
+    Mod+Ctrl+Page_Down { move-column-to-workspace-down; }
+    Mod+Tab { focus-workspace-previous; }
+    Mod+WheelScrollUp cooldown-ms=150 { focus-workspace-up; }
+    Mod+WheelScrollDown cooldown-ms=150 { focus-workspace-down; }
+    Mod+Shift+WheelScrollUp { focus-column-left; }
+    Mod+Shift+WheelScrollDown { focus-column-right; }
+
+    Mod+BracketLeft { consume-or-expel-window-left; }
+    Mod+BracketRight { consume-or-expel-window-right; }
+    Mod+R hotkey-overlay-title="Column width · ⅓ / ½ / ⅔ / full" { switch-preset-column-width; }
+    Mod+Shift+R { switch-preset-column-width-back; }
+    Mod+Minus { set-column-width "-5%"; }
+    Mod+Equal { set-column-width "+5%"; }
+    Mod+Shift+Minus { set-window-height "-5%"; }
+    Mod+Shift+Equal { set-window-height "+5%"; }
+    Mod+F { maximize-column; }
+    Mod+Shift+F hotkey-overlay-title="Fullscreen · Game / video" { fullscreen-window; }
+    Mod+C { center-column; }
+    Mod+V { toggle-window-floating; }
+    Mod+Shift+V { switch-focus-between-floating-and-tiling; }
+    Mod+W { toggle-column-tabbed-display; }
+
+    Print { screenshot; }
+    Ctrl+Print { screenshot-screen; }
+    Alt+Print { screenshot-window; }
+    Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+    Ctrl+Alt+Delete { quit; }
+
+    XF86AudioRaiseVolume allow-when-locked=true { spawn "wpctl" "set-volume" "-l" "1.0" "@DEFAULT_AUDIO_SINK@" "5%+"; }
+    XF86AudioLowerVolume allow-when-locked=true { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-"; }
+    XF86AudioMute allow-when-locked=true { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle"; }
+    XF86AudioMicMute allow-when-locked=true { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SOURCE@" "toggle"; }
+    XF86AudioPlay allow-when-locked=true { spawn "playerctl" "play-pause"; }
+    XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
+    XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
+    XF86MonBrightnessUp allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "+5%"; }
+    XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "5%-"; }
+}
+
+// Includes remain outside Git. Do not symlink the entire ~/.config/niri directory.
+// Optional versioned Xwayland override while the distribution catches up with fixes.
+include optional=true "../dotfiles-local/xwayland-satellite.kdl"
+include optional=true "../dotfiles-local/niri.kdl"

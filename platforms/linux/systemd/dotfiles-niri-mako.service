@@ -1,0 +1,13 @@
+# Started only by desktopctl session-start; deliberately not enable-able.
+[Unit]
+Description=Rose Observatory notifications
+PartOf=niri.service graphical-session.target
+After=niri.service graphical-session.target
+Requisite=niri.service graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/mako --config "%E/mako/config"
+Restart=on-failure
+RestartSec=2
+Slice=session.slice

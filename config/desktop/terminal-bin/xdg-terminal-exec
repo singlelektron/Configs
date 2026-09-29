@@ -1,0 +1,9 @@
+#!/bin/sh
+# GIO's private terminal adapter: restore the caller's PATH before Kitty starts.
+terminal_prefix=${0%/*}:
+case $PATH in
+    "$terminal_prefix"*) PATH=${PATH#"$terminal_prefix"} ;;
+    *) printf '%s\n' 'Run this helper through the Niri application launcher.' >&2; exit 1 ;;
+esac
+export PATH
+exec kitty -- "$@"

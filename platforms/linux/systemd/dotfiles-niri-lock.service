@@ -1,0 +1,13 @@
+# Started only by desktopctl session-start; deliberately not enable-able.
+[Unit]
+Description=Rose Observatory session lock
+PartOf=niri.service graphical-session.target
+After=niri.service graphical-session.target
+Requisite=niri.service graphical-session.target
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/python3 "%E/niri/desktopctl.py" lock
+ExitType=cgroup
+TimeoutStartSec=15
+Slice=session.slice
