@@ -9,12 +9,14 @@
 | Kitty 配置、透明度、主题、本地覆盖和 Git 快捷键解析 | 通过 | 通过 |
 | JetBrains Mono NL Nerd Font Mono 匹配 | Kitty CoreText 确认 | Fontconfig 确认 |
 | 新配置部署、重复部署、恢复预览 | 通过 | 通过 |
-| 8 个插件仓库与提交锁一致（含 lazy.nvim） | 通过 | 通过 |
+| 9 个插件仓库与提交锁一致（含 lazy.nvim） | 通过 | 通过 |
 | 核心工具、配置链接诊断 | 通过 | 通过（SSH 显式补充用户 PATH） |
 | 文件树真实 Git 标记、点文件 / 忽略文件、定位和打开回调 | 通过 | 通过 |
 | 可点击标签、文件树 / Fugitive / Diff 回调、特殊文件名转义 | 通过 | 通过 |
 | Git 终端切换文件后继续运行、退出清理、未保存编辑保留、不抢焦点 | 通过 | 通过 |
 | LazyGit 真实 PTY：加载共享配置、呈现面板、`q` 正常退出 | 通过 | 通过 |
+| Markdown：真实 HTTP / WebSocket、未保存修改、中文路径、端口冲突、Preview 回调 | 通过 | 通过 |
+| Markdown 浏览器：行内公式、矩阵、aligned、实时更新 | 本机 Chrome 通过 | SSH 隧道到 macOS Chrome 通过 |
 | 真实 PTY 启动：空目录 / 文件显示侧栏，Git 提交 / diff 不自动打开 | 通过 | 未复测 |
 | Rust LSP、类型 hover、格式化 | 通过 | 通过 |
 | Python LSP、项目 .venv、类型错误 + F401、格式化 | 通过 | 通过 |
@@ -23,7 +25,13 @@
 
 macOS 用临时项目完成了实际 TeX PDF 编译；这不证明任意科研文稿及字体依赖均可复现。
 Arch 保留编辑与语言服务，完整 TeX 发行版是可选步骤。Marksman 未安装，两端没有验证
-Markdown LSP。两端均未做图形会话截图、实际跨 SSH 剪贴板传输和 PDF 反向搜索验证。
+Markdown LSP。两端均未做 Kitty / Neovim 图形会话截图、实际跨 SSH 剪贴板传输和 PDF 反向搜索验证。
+
+Markdown 预览使用锁定的 `live-preview.nvim`。两端均验证初始 HTTP 页面、本地公式资源、
+未保存内容通过 WebSocket 推送而磁盘保持原样、切换文件时工作目录不变、停止后端口释放，
+以及端口占用时不开错页面。macOS Chrome 中检查了中文数学笔记的实际排版；经 SSH 隧道
+也确认 Arch 临时缓冲区的未保存标题变化到达本机浏览器，7 个公式节点没有 KaTeX 错误。
+未验证 Arch 桌面浏览器；初始加载 / 手动刷新读取磁盘的限制见笔记指南。
 
 鼠标与 Git 增补已在两端部署，LazyGit 均为 0.65.1。文件树和标签测试调用真实插件的
 点击动作；Git 终端生命周期测试使用临时替身进程检查退出处理，不在用户项目中提交、
@@ -35,7 +43,7 @@ Markdown LSP。两端均未做图形会话截图、实际跨 SSH 剪贴板传输
 
 ```sh
 dotfiles_ui_tmp="$(mktemp -d)"
-for dotfiles_case in nvim tree ui git; do
+for dotfiles_case in nvim tree ui git markdown; do
   XDG_STATE_HOME="$dotfiles_ui_tmp/$dotfiles_case/state" \
   XDG_CACHE_HOME="$dotfiles_ui_tmp/$dotfiles_case/cache" \
     nvim --headless -i NONE -u config/nvim/init.lua \
