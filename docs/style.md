@@ -31,3 +31,19 @@ Kitty、Neovim 与 LazyGit 共用以下颜色；将来配置 Niri、状态栏和
 
 鼠标流程：点击文件树 → 双击文件 → 点击顶部标签切换 → 点击 Git 管理改动 → `q` 返回编辑。
 键盘流程与鼠标并存：原生窗口、缓冲区和寄存器操作保持原样，文件树和 Git 也有快捷键。
+
+## 终端颜色与配置不同
+
+Shell 启动脚本也能通过 OSC 转义序列改写终端颜色。此次 Arch 的 Nyarch / pywal
+在 `.bashrc` 中加载 `~/.cache/wal/sequences`，把共享深蓝灰覆盖成暖棕色。
+本机已备份并修正该加载条件，使 Kitty 使用仓库配色；shell 配置本身不纳入仓库。
+如果新机器使用相同的桌面主题工具，可将原有 pywal 加载块限定为：
+
+```bash
+if [[ -z "${KITTY_WINDOW_ID:-}" && "${TERM:-}" != "xterm-kitty" && -f "$HOME/.cache/wal/sequences" ]]; then
+    cat "$HOME/.cache/wal/sequences"
+fi
+```
+
+修改后在 Kitty 按 `Ctrl-Shift-F5` 重载配置，或打开新窗口。相同颜色与不透明度仍会叠加
+不同壁纸；macOS 的背景模糊与 Linux 合成器也可能呈现不同效果，因此不能保证像素颜色完全相同。
