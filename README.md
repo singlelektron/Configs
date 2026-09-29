@@ -1,13 +1,15 @@
 # Personal dotfiles
 
-macOS 与 Arch Linux 共用的 Kitty / Neovim 配置。支持鼠标和原生 Vim 操作，部署可回滚。
+macOS 与 Arch Linux 共用的 Kitty / Neovim 配置，以及可选的 Arch Niri 桌面。
+支持鼠标和原生 Vim 操作，部署可回滚。
 
-- Kitty：深蓝灰底色、青色重点提示、88% 不透明度、JetBrains Mono 和简洁标签栏。
+- Kitty：暗玫瑰底色、柔粉重点提示、94% 不透明度、JetBrains Mono 和简洁标签栏。
 - Neovim ≥ 0.11.3：左侧文件树、可点击文件标签与 Git 入口、原生 LSP / 补全；8 个功能插件加 lazy.nvim。
 - Git：文件树与状态栏显示改动；LazyGit 提供鼠标友好的管理界面，保留 Fugitive 和命令行。
 - Rust：rust-analyzer；Python：basedpyright + Ruff；LaTeX：texlab + VimTeX；Markdown：实时浏览器预览与 KaTeX 数学公式，可选 Marksman。
 - AI agent 在独立终端工作；Neovim 检查外部文件变化，保留有未保存修改时的冲突提示。
-- 本地差异放在仓库外，旧配置和 Neovim 插件数据保留。暂不管理 shell、SSH、Git 身份或桌面会话。
+- Niri：二次元壁纸、四个工作区、三档信息栏、中文输入、网课常亮与独立锁屏；[完整使用说明](docs/niri.md)。
+- 本地差异放在仓库外，旧配置和 Neovim 插件数据保留。不管理 shell、SSH、Git 身份或默认登录会话。
 
 ## 新机器恢复
 
@@ -31,10 +33,11 @@ nvim
 python3 scripts/doctor.py
 ```
 
-在功能分支尚未合并时，clone 命令加 `--branch codex/dotfiles-foundation`。
+在 Niri 功能分支尚未合并时，clone 命令加 `--branch codex/niri-rose-desktop`。
 
 软件安装与配置部署分开：Homebrew 不主动升级已装工具；Arch 使用 `pacman -Syu --needed`，
-会执行完整系统升级以避免部分升级。脚本不安装大型 TeX 发行版、Niri 或额外 AI 客户端。
+会执行完整系统升级以避免部分升级。Niri 仅在显式指定 `--desktop niri` 时安装。
+脚本不安装大型 TeX 发行版、显卡驱动、游戏客户端或额外 AI 客户端。
 软件安装无法通过配置回滚命令撤销。系统包随包管理器更新；插件提交和 Python CLI 版本固定。
 
 Kitty 会为新窗口补充用户工具路径；macOS 还补充两种架构的 Homebrew 路径，
@@ -130,7 +133,8 @@ SSH 下 `Space y` 通过 OSC 52 复制到本机；粘贴用 Kitty 的粘贴快�
 ```
 
 设置了 `XDG_CONFIG_HOME` 时使用它替代 `~/.config`。
-部署器只链接 Kitty 的三个受管文件、整个 Neovim 配置目录和 LazyGit 的单个配置文件，保留其他状态文件。
+默认部署只链接 Kitty 的三个受管文件、整个 Neovim 配置目录和 LazyGit 的单个配置文件。
+`--desktop niri` 额外链接列出的桌面配置与用户服务文件，保留目录内其他配置和状态。
 若目标已存在，先备份到 `${XDG_STATE_HOME:-~/.local/state}/dotfiles/backups/<id>/`，
 权限为仅当前用户访问，并写入恢复清单。重复部署没有额外副作用。
 配置与状态目录可位于不同文件系统：先完成副本，再移除源件；文件、目录和符号链接均受支持。
@@ -154,6 +158,29 @@ python3 scripts/deploy.py --restore /absolute/path/to/backup-id --apply
 旧 LazyVim 的 `~/.local/share/nvim/lazy` 不变，新插件在 `~/.local/share/nvim/dotfiles-lazy`。
 普通启动不联网，首次未安装插件时基本编辑仍可用；`:DotfilesInstall` 才会下载并恢复锁定版本。
 不要为同步配置复制整个 `~/.local/share/nvim` 或 `~/.local/state/nvim`。
+
+## 可选 Arch Niri 桌面
+
+完整桌面使用暗玫瑰界面与 4K 二次元壁纸，适合文档、代码、网课笔记和游戏。
+软件与配置仍分开部署；首次安装与切换方式见 [Niri 指南](docs/niri.md)。
+
+```sh
+bash scripts/install-tools.sh --desktop niri
+bash scripts/install-tools.sh --desktop niri --apply
+python3 scripts/deploy.py --desktop niri
+python3 scripts/deploy.py --desktop niri --apply
+python3 "${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py" wallpaper fetch
+python3 scripts/doctor.py --desktop niri
+```
+
+默认图片从记录的 HTTPS 来源获取并校验 SHA-256，保存在本机数据目录；仓库不包含图片。
+首次下载失败仍能以纯色背景启动，之后可重试。`Super-Shift-Space` 打开桌面菜单，
+可更换壁纸、恢复默认图和切换“均衡 / 专注 / 性能”信息栏。更换壁纸不会修改软件配色。
+网课常亮独立控制，默认每次登录关闭；正常空闲 5 分钟锁屏、10 分钟熄屏，不自动挂起。
+
+保留 GNOME 与登录管理器，不自动启用、切换或更改默认会话。保存工作后自行在登录页选择
+Niri；真实会话需要验证中文输入、字体、剪贴板、屏幕共享、锁屏和游戏。
+输出名称、缩放及 VRR 放在仓库外的 `dotfiles-local/niri.kdl`，换机器重新核对。
 
 ## 可选写作工具
 
@@ -182,8 +209,10 @@ Markdown 跨文件链接补全可选安装 Marksman：`brew install marksman` �
 config/kitty/         共享终端配置
 config/nvim/          共享编辑器配置和插件锁
 config/lazygit/       共享 Git 管理界面配置（不包含历史和状态）
+config/desktop/       桌面控制工具、默认壁纸来源与校验值
+config/waybar/ 等      桌面组件的暗玫瑰外观与信息布局
 platforms/macos/      macOS 差异
-platforms/linux/      Linux 差异，预留 Niri 扩展位置
+platforms/linux/      Linux 差异、Niri 入口与会话绑定的用户服务
 packages/             平台软件清单、Python CLI 版本
 scripts/              安装、可回滚部署、诊断、检查
 tests/                部署回归测试、Neovim 冒烟测试

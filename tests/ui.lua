@@ -10,7 +10,7 @@ local function test()
   ui.apply_palette()
   assert(vim.o.mouse == "a", "mouse support must be enabled")
   assert(vim.api.nvim_get_hl(0, { name = "Normal" }).bg == nil, "editing background should inherit terminal transparency")
-  assert(vim.api.nvim_get_hl(0, { name = "NormalFloat" }).bg == tonumber("1b2230", 16), "float background should stay readable")
+  assert(vim.api.nvim_get_hl(0, { name = "NormalFloat" }).bg == tonumber("241d29", 16), "float background should stay readable")
 
   vim.fn.mkdir(temporary, "p")
   local function git(...)

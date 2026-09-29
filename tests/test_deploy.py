@@ -26,9 +26,10 @@ class DeploymentTests(unittest.TestCase):
         self.repo = self.root / "repo"
         self.home = self.root / "home"
         self.config, self.state = deploy.locations(self.home)
-        for name in ("config/kitty/kitty.conf", "config/kitty/theme.conf",
-                     "config/nvim/init.lua", "config/lazygit/config.yml",
-                     "platforms/macos/kitty.conf", "platforms/linux/kitty.conf"):
+        core = ("config/kitty/kitty.conf", "config/kitty/theme.conf",
+                "config/nvim/init.lua", "config/lazygit/config.yml",
+                "platforms/macos/kitty.conf", "platforms/linux/kitty.conf")
+        for name in (*core, *(source for _, source in deploy.NIRI_FILES)):
             path = self.repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(name, encoding="utf-8")
@@ -36,8 +37,8 @@ class DeploymentTests(unittest.TestCase):
         self.output.__enter__()
         self.addCleanup(self.output.__exit__, None, None, None)
 
-    def install(self, apply=True, platform="linux"):
-        return deploy.install(self.repo, self.config, self.state, platform, apply)
+    def install(self, apply=True, platform="linux", desktop=None):
+        return deploy.install(self.repo, self.config, self.state, platform, apply, desktop)
 
     def original(self, relative, contents="original"):
         path = self.config / relative
@@ -106,6 +107,122 @@ class DeploymentTests(unittest.TestCase):
     def test_macos_platform_selection(self):
         self.install(platform="macos")
         self.assertEqual(os.readlink(self.config / "kitty/platform.conf"), str(self.repo / "platforms/macos/kitty.conf"))
+
+    def test_desktop_is_opt_in_on_both_platforms(self):
+        niri = self.original("niri/config.kdl", "personal desktop")
+        for platform in ("linux", "macos"):
+            with self.subTest(platform=platform):
+                self.install(platform=platform)
+                self.assertEqual(niri.read_text(), "personal desktop")
+                self.assertFalse(niri.is_symlink())
+                self.assertFalse((self.config / "systemd").exists())
+
+    def test_niri_dry_run_creates_nothing(self):
+        self.install(desktop="niri", apply=False)
+        self.assertFalse(self.home.exists())
+
+    def test_niri_apply_restore_preserves_neighboring_state_and_overrides(self):
+        niri = self.original("niri/config.kdl", "old niri")
+        waybar = self.original("waybar/balanced.json", "old bar")
+        local = self.original("dotfiles-local/niri.kdl", "private outputs")
+        state = self.original("niri/private-state.json", "private state")
+        unrelated_unit = self.original("systemd/user/other.service", "other service")
+        backup = self.install(desktop="niri")
+        self.assertEqual(deploy.load_manifest(backup)["desktop"], "niri")
+        for target, source in deploy.NIRI_FILES:
+            self.assertEqual(os.readlink(self.config / target), str(self.repo / source))
+        self.assertIsNone(self.install(desktop="niri"))
+        deploy.restore(backup, apply=True)
+        self.assertEqual(niri.read_text(), "old niri")
+        self.assertEqual(waybar.read_text(), "old bar")
+        self.assertEqual(local.read_text(), "private outputs")
+        self.assertEqual(state.read_text(), "private state")
+        self.assertEqual(unrelated_unit.read_text(), "other service")
+        self.assertFalse((self.config / "niri/desktopctl.py").exists())
+        self.assertFalse((self.config / "systemd/user/niri.service.wants").exists())
+
+    def test_incremental_desktop_restore_retains_core_and_legacy_restore_works(self):
+        core_backup = self.install()
+        self.assertNotIn("desktop", deploy.load_manifest(core_backup))
+        desktop_backup = self.install(desktop="niri")
+        entries = deploy.load_manifest(desktop_backup)["entries"]
+        self.assertEqual(len(entries), len(deploy.NIRI_FILES))
+        deploy.restore(desktop_backup, apply=True)
+        self.assertTrue((self.config / "nvim").is_symlink())
+        self.assertFalse((self.config / "niri/config.kdl").exists())
+        deploy.restore(core_backup, apply=True)
+        self.assertFalse((self.config / "nvim").exists())
+
+    def test_niri_rejects_macos_before_writes(self):
+        with self.assertRaisesRegex(deploy.DeploymentError, "Linux-only"):
+            self.install(platform="macos", desktop="niri")
+        self.assertFalse(self.home.exists())
+
+    def test_desktop_rejects_unknown_profiles_before_writes(self):
+        for desktop in ("gnome", "", True, []):
+            with self.subTest(desktop=desktop):
+                with self.assertRaisesRegex(deploy.DeploymentError, "Unsupported desktop"):
+                    self.install(desktop=desktop)
+        self.assertFalse(self.home.exists())
+
+    def test_missing_desktop_source_preflights_before_core_changes(self):
+        original = self.original("kitty/kitty.conf", "original kitty")
+        (self.repo / "config/waybar/performance.json").unlink()
+        with self.assertRaisesRegex(deploy.DeploymentError, "Missing configuration source"):
+            self.install(desktop="niri")
+        self.assertEqual(original.read_text(), "original kitty")
+        self.assertFalse(original.is_symlink())
+        self.assertFalse(self.state.exists())
+
+    def test_desktop_symlinked_parent_preflights_before_core_changes(self):
+        outside = self.root / "external-units"
+        outside.mkdir()
+        (self.config / "systemd").mkdir(parents=True)
+        (self.config / "systemd/user").symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(deploy.DeploymentError, "symlinked parent"):
+            self.install(desktop="niri")
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertFalse(self.state.exists())
+        self.assertFalse((self.config / "kitty").exists())
+
+    def test_desktop_manifest_scope_tampering_is_rejected(self):
+        backup = self.install(desktop="niri")
+        path = backup / "manifest.json"
+        manifest = json.loads(path.read_text())
+        for desktop in (None, "unknown"):
+            with self.subTest(desktop=desktop):
+                changed = dict(manifest)
+                changed["desktop"] = desktop
+                path.write_text(json.dumps(changed))
+                with self.assertRaises(deploy.DeploymentError):
+                    deploy.restore(backup, apply=True)
+                self.assertTrue((self.config / "kitty/kitty.conf").is_symlink())
+        manifest["platform"] = "macos"
+        path.write_text(json.dumps(manifest))
+        with self.assertRaisesRegex(deploy.DeploymentError, "Linux-only"):
+            deploy.restore(backup, apply=True)
+
+    def test_restore_desktop_conflict_leaves_all_other_links_intact(self):
+        self.original("niri/config.kdl", "original niri")
+        backup = self.install(desktop="niri")
+        unit = self.config / "systemd/user/dotfiles-niri-waybar.service"
+        unit.unlink()
+        unit.write_text("new user unit")
+        with self.assertRaisesRegex(deploy.DeploymentError, "intervening changes"):
+            deploy.restore(backup, apply=True)
+        self.assertEqual(unit.read_text(), "new user unit")
+        self.assertTrue((self.config / "niri/config.kdl").is_symlink())
+
+    def test_cli_rejects_restore_profile_argument(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit) as error:
+                deploy.main(["--restore", str(self.root), "--desktop", "niri"])
+        self.assertEqual(error.exception.code, 2)
+
+    def test_cli_rejects_niri_on_macos(self):
+        with mock.patch.object(deploy.sys, "platform", "darwin"), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(deploy.main(["--desktop", "niri", "--home", str(self.home)]), 1)
+        self.assertFalse(self.home.exists())
 
     def test_lazygit_config_restore_preserves_private_state(self):
         config = self.original("lazygit/config.yml", "personal Git UI")

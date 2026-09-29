@@ -3,12 +3,28 @@
 set -euo pipefail
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 apply=false
-case "${1:-}" in
-  "") ;;
-  --apply) apply=true ;;
-  *) echo "Usage: bash scripts/install-tools.sh [--apply]" >&2; exit 2 ;;
-esac
-if [ "$#" -gt 1 ]; then echo "Unexpected extra arguments" >&2; exit 2; fi
+desktop=""
+usage() { echo 'Usage: bash scripts/install-tools.sh [--desktop niri] [--apply]'; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --apply) apply=true; shift ;;
+    --desktop)
+      if [ "$#" -lt 2 ] || [ "$2" != niri ] || [ -n "$desktop" ]; then
+        usage >&2; exit 2
+      fi
+      desktop=$2
+      shift 2
+      ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+system=$(uname -s)
+if [ -n "$desktop" ] && [ "$system" != Linux ]; then
+  echo 'The niri desktop profile is Linux-only (Arch/pacman).' >&2
+  exit 1
+fi
 
 run() {
   printf '  '
@@ -24,7 +40,7 @@ if ! command -v rustup >/dev/null 2>&1; then
   if "$apply"; then exit 1; fi
 fi
 
-case "$(uname -s)" in
+case "$system" in
   Darwin)
     if ! command -v brew >/dev/null 2>&1; then
       echo "Install Homebrew from https://brew.sh/ and load brew shellenv first." >&2
@@ -43,6 +59,12 @@ case "$(uname -s)" in
       case "$package" in ""|\#*) continue ;; esac
       arch_packages+=("$package")
     done < "$repo_dir/packages/arch.txt"
+    if [ "$desktop" = niri ]; then
+      while IFS= read -r package || [ -n "$package" ]; do
+        case "$package" in ""|\#*) continue ;; esac
+        arch_packages+=("$package")
+      done < "$repo_dir/packages/arch-niri.txt"
+    fi
     # A full upgrade is required: Arch does not support partial upgrades.
     # Leave pacman's confirmation and sudo authentication interactive.
     run sudo pacman -Syu --needed "${arch_packages[@]}"
@@ -58,7 +80,12 @@ done < "$repo_dir/packages/python-tools.txt"
 
 if "$apply"; then
   echo 'Tools installed. Ensure ~/.local/bin and ~/.cargo/bin are on your shell PATH.'
-  echo 'Next: python3 scripts/deploy.py (preview), then add --apply.'
+  if [ "$desktop" = niri ]; then
+    echo 'Next: python3 scripts/deploy.py --desktop niri (preview), then add --apply.'
+    echo 'The installer does not enable services or change your login session.'
+  else
+    echo 'Next: python3 scripts/deploy.py (preview), then add --apply.'
+  fi
 else
   echo 'Preview only. Add --apply to install tools; Arch may upgrade the system.'
 fi

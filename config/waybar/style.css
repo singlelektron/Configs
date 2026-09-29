@@ -1,0 +1,73 @@
+/* Rose Observatory: restrained color, readable type, no animated telemetry. */
+@define-color base #19151c;
+@define-color surface #241d29;
+@define-color selection #3b2c3b;
+@define-color border #574254;
+@define-color foreground #ede5ec;
+@define-color muted #b3a2b1;
+@define-color rose #f2a5c7;
+@define-color cyan #9bcbd3;
+@define-color amber #e7c38c;
+@define-color red #f08091;
+
+* {
+    font-family: "JetBrainsMonoNL Nerd Font Mono", "Noto Sans CJK SC", sans-serif;
+    font-size: 12px;
+    min-height: 0;
+    border: none;
+    border-radius: 0;
+}
+
+window#waybar {
+    color: @foreground;
+    background: @surface;
+    border-bottom: 1px solid @border;
+}
+
+tooltip {
+    color: @foreground;
+    background: @surface;
+    border: 1px solid @border;
+    border-radius: 8px;
+}
+
+tooltip label { padding: 6px; }
+button { box-shadow: none; text-shadow: none; }
+button:hover { background: @selection; }
+
+#custom-menu {
+    color: @rose;
+    font-size: 18px;
+    padding: 0 14px;
+}
+
+#workspaces button {
+    color: @muted;
+    padding: 0 11px;
+    border-bottom: 2px solid transparent;
+}
+#workspaces button.active { color: @rose; border-bottom-color: @rose; }
+#workspaces button.focused { color: @rose; border-bottom-color: @rose; }
+#workspaces button.urgent { color: @red; border-bottom-color: @red; }
+#workspaces button.empty:not(.active):not(.focused) { color: @muted; }
+
+#window { color: @muted; padding: 0 12px; }
+#clock { color: @foreground; padding: 0 14px; font-weight: bold; }
+#custom-presentation, #mpris, #pulseaudio, #network, #cpu, #memory,
+#custom-gpu, #custom-hardware, #backlight, #battery, #tray, #custom-profile {
+    padding: 0 9px;
+    margin: 5px 0;
+}
+#custom-presentation { color: @muted; }
+#custom-presentation.active, #custom-presentation.activated { color: @amber; }
+#mpris { color: @cyan; }
+#pulseaudio.muted, #network.disconnected { color: @muted; }
+#cpu, #memory, #custom-gpu, #custom-hardware { color: @muted; }
+#cpu.warning, #memory.warning, #custom-gpu.warning, #custom-hardware.warning { color: @amber; }
+#cpu.critical, #memory.critical, #custom-gpu.critical, #custom-hardware.critical { color: @red; }
+#custom-profile { color: @rose; border-left: 1px solid @border; padding: 0 13px; }
+
+#backlight { color: @muted; }
+#battery.charging { color: @cyan; }
+#battery.warning { color: @amber; }
+#battery.critical { color: @red; }

@@ -1,0 +1,138 @@
+{
+  "name": "performance",
+  "layer": "top",
+  "position": "top",
+  "height": 36,
+  "spacing": 0,
+  "exclusive": true,
+  "passthrough": false,
+  "fixed-center": true,
+  "reload_style_on_change": true,
+  "modules-left": [
+    "custom/menu",
+    "niri/workspaces",
+    "niri/window"
+  ],
+  "modules-center": [
+    "clock"
+  ],
+  "modules-right": [
+    "custom/presentation",
+    "pulseaudio",
+    "network",
+    "cpu",
+    "memory",
+    "custom/gpu",
+    "custom/hardware",
+    "backlight",
+    "battery",
+    "tray",
+    "custom/profile"
+  ],
+  "custom/menu": {
+    "format": "∑",
+    "tooltip-format": "Rose Observatory · 桌面控制",
+    "on-click": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" menu"
+  },
+  "niri/workspaces": {
+    "format": "{index} {icon}",
+    "all-outputs": false,
+    "format-icons": {
+      "read": "阅读",
+      "code": "编程",
+      "study": "学习",
+      "play": "游戏",
+      "default": "·"
+    },
+    "disable-click": false
+  },
+  "niri/window": {
+    "format": "{}",
+    "max-length": 24,
+    "separate-outputs": true,
+    "tooltip": false
+  },
+  "clock": {
+    "interval": 30,
+    "format": "{:%H:%M}",
+    "format-alt": "{:%Y-%m-%d  %H:%M}",
+    "tooltip-format": "<big>{:%Y · %B}</big>\n<tt><small>{calendar}</small></tt>"
+  },
+  "custom/presentation": {
+    "exec": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" presentation status",
+    "return-type": "json",
+    "interval": 3,
+    "on-click": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" presentation toggle"
+  },
+  "pulseaudio": {
+    "format": "VOL {volume}%",
+    "format-muted": "MUTE",
+    "scroll-step": 5,
+    "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "on-click-right": "niri msg action spawn -- pavucontrol",
+    "tooltip-format": "{desc} · 右键打开音量控制"
+  },
+  "network": {
+    "format-wifi": "WIFI {signalStrength}%",
+    "format-ethernet": "LAN",
+    "format-disconnected": "OFFLINE",
+    "tooltip-format": "{ifname}\n{ipaddr}/{cidr}\n↓ {bandwidthDownBytes}  ↑ {bandwidthUpBytes}",
+    "tooltip-format-wifi": "{essid} · {signalStrength}%\n{ipaddr}\n↓ {bandwidthDownBytes}  ↑ {bandwidthUpBytes}",
+    "tooltip-format-disconnected": "网络未连接",
+    "interval": 5,
+    "on-click": "niri msg action spawn -- nm-connection-editor"
+  },
+  "cpu": {
+    "format": "CPU {usage}%",
+    "interval": 2,
+    "states": {
+      "warning": 75,
+      "critical": 95
+    }
+  },
+  "memory": {
+    "format": "RAM {percentage}%",
+    "tooltip-format": "{used:0.1f} / {total:0.1f} GiB",
+    "interval": 10,
+    "states": {
+      "warning": 80,
+      "critical": 95
+    }
+  },
+  "custom/gpu": {
+    "exec": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" metrics gpu",
+    "return-type": "json",
+    "interval": 3
+  },
+  "custom/hardware": {
+    "exec": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" metrics hardware",
+    "return-type": "json",
+    "interval": 5
+  },
+  "tray": {
+    "icon-size": 16,
+    "spacing": 8
+  },
+  "custom/profile": {
+    "format": "PERF",
+    "tooltip-format": "状态栏：性能 · 点击切换",
+    "on-click": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" bar menu"
+  },
+  "battery": {
+    "format": "BAT {capacity}%",
+    "format-charging": "BAT +{capacity}%",
+    "format-plugged": "AC {capacity}%",
+    "tooltip-format": "{timeTo} · {capacity}%",
+    "interval": 30,
+    "states": {
+      "warning": 25,
+      "critical": 10
+    }
+  },
+  "backlight": {
+    "format": "☀ {percent}%",
+    "tooltip-format": "屏幕亮度 · {percent}%",
+    "on-scroll-up": "brightnessctl --class=backlight set +5%",
+    "on-scroll-down": "brightnessctl --class=backlight set 5%-"
+  }
+}

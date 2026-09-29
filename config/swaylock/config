@@ -1,0 +1,24 @@
+color=19151c
+font=JetBrainsMonoNL Nerd Font Mono
+font-size=20
+indicator-radius=84
+indicator-thickness=5
+indicator-idle-visible
+show-failed-attempts
+ignore-empty-password
+inside-color=241d29e6
+inside-clear-color=241d29e6
+inside-ver-color=241d29e6
+inside-wrong-color=3b2c3be6
+ring-color=574254
+ring-clear-color=e7c38c
+ring-ver-color=9bcbd3
+ring-wrong-color=f08091
+key-hl-color=f2a5c7
+bs-hl-color=c9adeb
+separator-color=19151c
+line-uses-ring
+text-color=ede5ec
+text-clear-color=ede5ec
+text-ver-color=9bcbd3
+text-wrong-color=f08091
