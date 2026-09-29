@@ -66,14 +66,17 @@ Fcitx5 通过 XDG 自动启动入口运行，已有的输入法列表、快捷�
 | --- | --- |
 | `read` | PDF、资料和网页阅读 |
 | `code` | 项目 Neovim、终端和参考文档；从项目目录启动 `nvim` |
-| `study` | 网课 Firefox + 半屏 Markdown 笔记；`Super+N` 打开专用笔记终端 |
+| `study` | 网课浏览器 + 半屏 Markdown 笔记；`Super+N` 打开专用笔记终端 |
 | `play` | Steam 与游戏；匹配的 Steam 游戏和 Gamescope 窗口全屏打开 |
 
 普通应用在当前工作区打开，不按应用类别自动搬走；只有专用笔记终端固定在 `study`。
-在 `study` 中打开 Firefox 和 `Super+N`，用 `Super+R` 调成两个半宽列；
+在 `study` 中用 `Super+B` 打开默认浏览器，再用 `Super+N` 打开笔记，用 `Super+R` 调成两个半宽列；
 笔记保存为 `.md` 后用 `Space mp` 打开数学预览，`Space ms` 停止。
 宽屏可使用三分之一列宽放置资料、编辑器、预览；第三列也可保留在横向滚动区域。
 Firefox 画中画窗口默认浮动在右下角，适合边看课边调整笔记。
+`Super+B` 通过系统默认浏览器的桌面入口启动，支持原生和 Flatpak 应用，不固定为 Firefox。
+已安装 Chrome/Chromium 时，可在浏览器设置中设为默认浏览器；用
+`xdg-settings get default-web-browser` 查看当前选择。个人默认应用关联留在本机，不进入 Git。
 公式、预览和保存行为见 [Markdown 笔记指南](markdown-notes.md)。
 
 | Waybar 布局 | 常驻信息 |
@@ -170,7 +173,7 @@ niri validate --config "${XDG_CONFIG_HOME:-$HOME/.config}/niri/config.kdl"
 | 按键 | 功能 |
 | --- | --- |
 | `Mod+Enter` / `Mod+T` | 打开 Kitty |
-| `Mod+D` / `Mod+B` / `Mod+E` | 应用启动器 / Firefox / Nautilus |
+| `Mod+D` / `Mod+B` / `Mod+E` | 应用启动器 / 系统默认浏览器（如 Chrome/Chromium） / Nautilus |
 | `Mod+N` | 在 `study` 打开 Neovim 笔记终端 |
 | `Mod+Shift+Space` | 桌面控制菜单 |
 | `Mod+Alt+B` / `Mod+Alt+W` | 状态栏布局 / 选择壁纸 |

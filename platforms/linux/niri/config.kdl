@@ -112,7 +112,7 @@ binds {
     Mod+Return hotkey-overlay-title="Terminal · Kitty" { spawn "kitty"; }
     Mod+T { spawn "kitty"; }
     Mod+D hotkey-overlay-title="Applications · Fuzzel" { spawn "fuzzel"; }
-    Mod+B hotkey-overlay-title="Browser · Firefox" { spawn "firefox"; }
+    Mod+B hotkey-overlay-title="Browser · System default" { spawn-sh "gtk-launch \"$(xdg-settings get default-web-browser)\""; }
     Mod+E hotkey-overlay-title="Files · Nautilus" { spawn "nautilus"; }
     Mod+N hotkey-overlay-title="Study notes · Neovim" { spawn "kitty" "--class" "study-notes" "nvim"; }
     Mod+Shift+Space hotkey-overlay-title="Desktop controls" { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" menu"; }
