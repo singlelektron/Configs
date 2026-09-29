@@ -97,3 +97,34 @@ window.desktop-panel {
 .desktop-panel spinner { color: #f2a5c7; }
 .desktop-panel scrollbar { background: transparent; }
 .desktop-panel scrollbar slider { background: #574254; min-width: 4px; border-radius: 4px; }
+
+/* Application picker shares the control center header, surfaces and typography. */
+.desktop-panel .launcher-search-area { padding: 0 24px 14px; }
+.desktop-panel .launcher-search {
+    background: #241d29;
+    color: #ede5ec;
+    border: 1px solid #574254;
+    border-radius: 9px;
+    padding: 13px 14px;
+    box-shadow: none;
+}
+.desktop-panel .launcher-search:focus-within { border-color: #f2a5c7; outline: none; }
+.desktop-panel .launcher-search image { color: #c9adeb; }
+.desktop-panel .launcher-search text { background: transparent; color: #ede5ec; }
+.desktop-panel .launcher-search text > selection { background: #574254; color: #ede5ec; }
+.desktop-panel .launcher-results { padding: 0 24px 16px; }
+.desktop-panel .launcher-list { background: transparent; }
+.desktop-panel row.application-card {
+    background: #241d29;
+    border: 1px solid #574254;
+    border-radius: 9px;
+    padding: 13px 15px;
+    margin-bottom: 8px;
+    color: #ede5ec;
+}
+.desktop-panel row.application-card:hover { background: #332637; border-color: #9b718b; }
+.desktop-panel row.application-card:selected { background: #3b2c3b; border-color: #f2a5c7; }
+.desktop-panel row.application-card:focus-visible { outline: 2px solid #f2a5c7; outline-offset: -3px; }
+.desktop-panel .launcher-open-icon { color: #b3a2b1; }
+.desktop-panel row.application-card:selected .launcher-open-icon { color: #f2a5c7; }
+.desktop-panel .launcher-empty { color: #b3a2b1; padding: 64px 10px; }

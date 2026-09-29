@@ -5,6 +5,7 @@ repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_dir"
 python3 -m unittest discover -s tests -p 'test_*.py' -v
 bash -n scripts/install-tools.sh scripts/check.sh
+sh -n config/desktop/terminal-bin/xdg-terminal-exec
 
 test_root=$(python3 -c 'import tempfile,pathlib; print(pathlib.Path(tempfile.mkdtemp(prefix="dotfiles-check-")).resolve())')
 trap 'rm -rf -- "$test_root"' EXIT

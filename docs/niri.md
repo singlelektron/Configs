@@ -106,6 +106,14 @@ Firefox 画中画窗口默认浮动在右下角，适合边看课边调整笔记
 GPU 信息目前读取 `nvidia-smi`，温度只显示受支持的 CPU 传感器；缺失或读取失败时隐藏对应数据。
 “性能”只是信息布局，不改变 GPU 时钟、电源配置或游戏性能。
 
+`Super+D` 打开同一套 GTK4 暗玫瑰设计的 **Applications** 窗口；两者共用
+`config/desktop/panel.css`，统一标题、字体、卡片、边框和焦点颜色。
+输入名称、类别或关键词搜索，↑↓ 选择、Enter 启动、Esc 关闭，也支持直接点击。
+列表读取原生和 Flatpak 导出的可见 `.desktop` 入口，由 GIO 处理启动参数和 D-Bus 激活；
+终端入口使用 Kitty。启动成功后关闭，失败时在窗口内提示；再次打开会聚焦已有窗口。
+不保存启动历史或个人排序。Fuzzel 保留用于 `Super+Alt+B` 的紧凑信息栏模式菜单，
+必要时也可在终端手动运行 `fuzzel`。
+
 ```sh
 python3 "${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py" bar balanced
 python3 "${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py" bar focus

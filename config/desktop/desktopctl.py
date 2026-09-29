@@ -310,19 +310,42 @@ class Desktop:
         os.execvp("swaylock", ["swaylock", "--daemonize", "--config", str(self.config / "swaylock/config")])
 
     def menu(self):
+        self.open_interface("panel")
+
+    def applications(self):
+        self.open_interface("launcher")
+
+    def open_interface(self, interface):
         self.require_session()
-        # Launch outside Waybar's cgroup: switching bar profile must not kill
-        # the control panel that requested it.
+        # Launch outside Waybar's cgroup so restarting the bar cannot kill
+        # either interface or an application opened from the picker.
         command(["niri", "msg", "action", "spawn", "--", "/usr/bin/python3",
-                 str(self.config / "niri/desktopctl.py"), "panel"])
+                 str(self.config / "niri/desktopctl.py"), interface])
+
+    @staticmethod
+    def interface_module(name):
+        directory = Path(__file__).resolve().parent
+        spec = importlib.util.spec_from_file_location("dotfiles_" + name, directory / (name + ".py"))
+        module = importlib.util.module_from_spec(spec)
+        # Resolve sibling modules both through deployed links and in the repo.
+        sys.path.insert(0, str(directory))
+        try:
+            spec.loader.exec_module(module)
+        finally:
+            sys.path.pop(0)
+        return module
 
     def panel(self):
         self.require_session()
-        path = Path(__file__).resolve().with_name("panel.py")
-        spec = importlib.util.spec_from_file_location("dotfiles_panel", path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        module.run(self)
+        self.interface_module("panel").run(self)
+
+    def launcher(self):
+        self.require_session()
+        self.interface_module("launcher").run(self)
+
+    def launch_application(self, desktop_id, context, callback):
+        self.require_session()
+        self.interface_module("launcher_backend").launch_application(desktop_id, context, callback)
 
 
 def metrics(kind):
@@ -364,7 +387,8 @@ def metrics(kind):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
-    for action in ("session-start", "waybar", "wallpaper-run", "idle", "session-events", "lock", "menu", "panel"):
+    for action in ("session-start", "waybar", "wallpaper-run", "idle", "session-events", "lock", "menu", "panel",
+                   "applications", "launcher"):
         sub.add_parser(action)
     sub.add_parser("bar").add_argument("profile", choices=(*PROFILES, "menu"))
     wall = sub.add_parser("wallpaper")

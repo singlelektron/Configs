@@ -9,7 +9,7 @@
 
 | 按键 | 功能 |
 | --- | --- |
-| `Super+D` | 应用启动器：输入名称、方向键选择、Enter 启动、Esc 取消 |
+| `Super+D` | 暗玫瑰应用选择窗口：输入名称、↑↓ 选择、Enter 启动、Esc 关闭；也可直接点击 |
 | `Super+Enter` | Kitty 终端；已有命令行程序在这里运行 |
 | `Super+B` | 系统默认浏览器，例如 Chrome / Chromium |
 | `Super+E` | Nautilus 文件管理器 |
@@ -18,6 +18,10 @@
 | `Super+Q` | 关闭当前窗口；未保存内容由应用决定是否询问 |
 | `Super+Shift+Space` | Rose Observatory 桌面控制面板；Esc 关闭 |
 | `Super+Shift+/` | Niri 快捷键提示层 |
+
+应用选择窗口与桌面控制面板共用配色、字体、卡片和边框样式。可按名称、类别或关键词搜索，
+包含原生和 Flatpak 的可见应用入口；Neovim 等终端应用由 Kitty 打开。
+再次按 `Super+D` 会聚焦已有窗口；启动出错时保留窗口并显示原因，不记录应用使用历史。
 
 ## 怎么把两个窗口上下排列
 

@@ -62,7 +62,7 @@ hotkey-overlay { skip-at-startup; }
 screenshot-path "~/Pictures/Screenshots/%Y-%m-%d_%H-%M-%S.png"
 
 // Fcitx5 starts through its existing XDG autostart entry. Keep native GTK IME.
-// These variables apply to apps launched by niri, including Fuzzel.
+// These variables apply to apps launched by niri, including the application picker.
 environment {
     LANG "en_US.UTF-8"
     LC_MESSAGES "en_US.UTF-8"
@@ -110,7 +110,7 @@ window-rule {
     open-floating true
 }
 window-rule {
-    match app-id="^io\\.github\\.dotfiles\\.DesktopPanel$"
+    match app-id="^io\\.github\\.dotfiles\\.(DesktopPanel|AppLauncher)$"
     open-floating true
     default-column-width { fixed 680; }
     default-window-height { fixed 720; }
@@ -120,7 +120,7 @@ binds {
     Mod+Shift+Slash { show-hotkey-overlay; }
     Mod+Return hotkey-overlay-title="Terminal · Kitty" { spawn "kitty"; }
     Mod+T { spawn "kitty"; }
-    Mod+D hotkey-overlay-title="Applications · Fuzzel" { spawn "fuzzel"; }
+    Mod+D hotkey-overlay-title="Applications" { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" applications"; }
     Mod+B hotkey-overlay-title="Browser · System default" { spawn-sh "gtk-launch \"$(xdg-settings get default-web-browser)\""; }
     Mod+E hotkey-overlay-title="Files · Nautilus" { spawn "nautilus"; }
     Mod+N hotkey-overlay-title="Study notes · Neovim" { spawn "kitty" "--class" "study-notes" "nvim"; }
