@@ -7,6 +7,10 @@
     "branch": "main",
     "commit": "306a05526ada86a7b30af95c5cc81ffba93fef97"
   },
+  "live-preview.nvim": {
+    "branch": "main",
+    "commit": "a6307fa340ed7c0d96f5c567afc8c991aad94ce0"
+  },
   "lualine.nvim": {
     "branch": "master",
     "commit": "221ce6b2d999187044529f49da6554a92f740a96"

@@ -9,7 +9,7 @@ function M.check()
     health.error("Neovim >= 0.11.3 is required for native LSP configuration")
   end
   local root = vim.fn.stdpath("data") .. "/dotfiles-lazy"
-  for _, name in ipairs({ "lazy.nvim", "nvim-lspconfig", "mini.pick", "gitsigns.nvim", "vim-fugitive", "vimtex", "nvim-tree.lua", "lualine.nvim" }) do
+  for _, name in ipairs({ "lazy.nvim", "nvim-lspconfig", "mini.pick", "gitsigns.nvim", "vim-fugitive", "vimtex", "nvim-tree.lua", "lualine.nvim", "live-preview.nvim" }) do
     if vim.uv.fs_stat(root .. "/" .. name .. "/.git") then
       health.ok(name .. " installed")
     else

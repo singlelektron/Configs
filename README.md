@@ -3,9 +3,9 @@
 macOS 与 Arch Linux 共用的 Kitty / Neovim 配置。支持鼠标和原生 Vim 操作，部署可回滚。
 
 - Kitty：深蓝灰底色、青色重点提示、88% 不透明度、JetBrains Mono 和简洁标签栏。
-- Neovim ≥ 0.11.3：左侧文件树、可点击文件标签与 Git 入口、原生 LSP / 补全；7 个功能插件加 lazy.nvim。
+- Neovim ≥ 0.11.3：左侧文件树、可点击文件标签与 Git 入口、原生 LSP / 补全；8 个功能插件加 lazy.nvim。
 - Git：文件树与状态栏显示改动；LazyGit 提供鼠标友好的管理界面，保留 Fugitive 和命令行。
-- Rust：rust-analyzer；Python：basedpyright + Ruff；LaTeX：texlab + VimTeX；Markdown：原生编辑，可选 Marksman。
+- Rust：rust-analyzer；Python：basedpyright + Ruff；LaTeX：texlab + VimTeX；Markdown：实时浏览器预览与 KaTeX 数学公式，可选 Marksman。
 - AI agent 在独立终端工作；Neovim 检查外部文件变化，保留有未保存修改时的冲突提示。
 - 本地差异放在仓库外，旧配置和 Neovim 插件数据保留。暂不管理 shell、SSH、Git 身份或桌面会话。
 
@@ -69,6 +69,7 @@ Neovim 也会为这两个标准目录补充 PATH，因此非交互 SSH 启动仍
 | `Space us` | 英文拼写检查开关，默认关闭 |
 | `\ll` / `\lv` / `\le` | VimTeX 单次编译 / 查看 PDF / 错误列表 |
 | `:checkhealth dotfiles` | 配置和依赖诊断 |
+| `Space mp` / `Space ms` | 切换 Markdown 实时预览 / 停止预览服务 |
 
 Markdown、TeX 和 Git 提交消息只做视觉折行，不自动重新排版正文。
 Python 优先采用项目根目录 `.venv/bin/python`，然后是已激活虚拟环境和系统 Python。
@@ -90,6 +91,20 @@ Kitty 使用 `Ctrl-Shift-C/V` 复制粘贴、`Ctrl-Shift-Enter` 新窗口、`Ctr
 两处 Git 入口显式读取同一个 `~/.config/lazygit/config.yml`（支持 XDG），不依赖 macOS 的默认配置路径。
 Neovim 内拖选会进入 Vim 选择；按住 Shift 拖选可使用 Kitty 的终端文本选择。右键提供 Neovim 原生菜单。
 修改透明度后建议重启 Kitty；后续可以用 `Ctrl-Shift-F5` 重载配置。
+
+## Markdown 数学笔记
+
+先将笔记保存为 `.md`，点击顶部 **Preview** 或按 `Space mp`，在浏览器中实时阅读。
+使用 `$...$` 写行内公式、`$$...$$` 写独立公式；矩阵、积分和多行对齐由 KaTeX 渲染。
+安装锁定的 `live-preview.nvim` 后，渲染资源在本地，不需要 Node、Deno 或完整 TeX 发行版。
+
+首次打开及手动刷新页面读取已保存文件；连接后继续输入会同步未保存修改，但不会自动保存。
+`Space mp` 再次点击当前笔记可关闭，`Space ms` 或 `:MarkdownPreviewStop` 随时停止服务。
+浏览器可独立滚动，编辑器光标不会强制改变阅读位置。
+
+SSH 使用 `ssh -L 5500:127.0.0.1:5500 user@arch-host` 建立隧道，远端启动预览后，
+在本机浏览器打开 Neovim 显示的地址。服务只监听 `127.0.0.1`。
+可直接打开 [数学笔记示例与说明](docs/markdown-notes.md) 体验；预览不依赖可选的 Marksman。
 
 ## 远端使用
 

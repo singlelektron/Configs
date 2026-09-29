@@ -4,6 +4,21 @@ local initialized = false
 local function specs()
   return {
     {
+      "brianhuster/live-preview.nvim",
+      ft = "markdown",
+      cmd = { "LivePreview" },
+      config = function()
+        require("livepreview.config").set({
+          address = "127.0.0.1",
+          port = 5500,
+          dynamic_root = true,
+          browser = (vim.env.SSH_CONNECTION or vim.env.SSH_TTY) and "true" or "default",
+          -- Let the mouse scroll the browser independently while editing.
+          sync_scroll = false,
+        })
+      end,
+    },
+    {
       "nvim-tree/nvim-tree.lua",
       lazy = false,
       keys = {

@@ -30,6 +30,7 @@ opt.clipboard = ""
 vim.cmd.colorscheme("habamax")
 require("dotfiles.ui").apply_palette()
 require("dotfiles.git").setup()
+require("dotfiles.markdown").setup()
 
 -- SSH copies go to the client terminal. Paste with the terminal's paste key;
 -- querying the remote clipboard via OSC 52 can block or require permission.

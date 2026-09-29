@@ -159,7 +159,7 @@ function M.setup()
           "buffers",
           show_filename_only = true,
           mode = 0,
-          max_length = function() return math.max(10, vim.o.columns - 27) end,
+          max_length = function() return math.max(10, vim.o.columns - (vim.bo.filetype == "markdown" and 36 or 27)) end,
           symbols = { modified = " +", alternate_file = "", directory = "/" },
           filetype_names = { NvimTree = "Files", fugitive = "Git status", lazygit = "Git" },
           buffers_color = {
@@ -171,6 +171,11 @@ function M.setup()
       lualine_c = {},
       lualine_x = {},
       lualine_y = {
+        {
+          function() return "Preview" end,
+          cond = function() return vim.bo.filetype == "markdown" end,
+          on_click = click(function() require("dotfiles.markdown").toggle() end),
+        },
         { function() return "Git" end, on_click = click(function() require("dotfiles.git").open() end) },
         { function() return "Diff" end, on_click = click(open_diff) },
       },
