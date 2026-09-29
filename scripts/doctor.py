@@ -13,7 +13,7 @@ def main():
     missing = []
     home = Path.home()
     repo = Path(__file__).resolve().parent.parent
-    config = Path(os.environ.get("XDG_CONFIG_HOME", home / ".config"))
+    config = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
     print(f"Platform: {platform.system()} {platform.machine()}")
     print("Required tools (PATH in the current shell):")
     for name, args in (

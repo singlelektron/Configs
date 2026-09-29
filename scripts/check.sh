@@ -29,6 +29,8 @@ assert not bad, bad
 assert options.font_size == 17.0, "Local override did not load"
 assert options.background_opacity == 1.0
 assert options.background == type(options.background)(30, 30, 46)
+assert os.path.expanduser("~/.local/bin") in options.env["PATH"].split(":")
+assert os.path.expanduser("~/.cargo/bin") in options.env["PATH"].split(":")
 print("Kitty parsing, shared theme and local override: PASS")
 '
 else

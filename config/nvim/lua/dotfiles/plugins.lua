@@ -49,6 +49,8 @@ local function specs()
       lazy = false,
       init = function()
         vim.g.tex_flavor = "latex"
+        -- Editing also works on hosts without the optional TeX distribution.
+        vim.g.vimtex_compiler_enabled = vim.fn.executable("latexmk")
         vim.g.vimtex_compiler_latexmk = { continuous = 0 }
         vim.g.vimtex_view_automatic = 0
         vim.g.vimtex_quickfix_mode = 0

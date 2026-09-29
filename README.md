@@ -36,7 +36,8 @@ python3 scripts/doctor.py
 会执行完整系统升级以避免部分升级。脚本不安装大型 TeX 发行版、Niri 或额外 AI 客户端。
 软件安装无法通过配置回滚命令撤销。系统包随包管理器更新；插件提交和 Python CLI 版本固定。
 
-确保 shell 能找到用户工具；按需把下面一行加入自己的 `~/.zshrc` 或 `~/.bashrc`：
+Kitty 会为新窗口补充用户工具路径。其他终端和 SSH shell 中，按需把下面一行加入
+自己的 `~/.zshrc` 或 `~/.bashrc`：
 
 ```sh
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
@@ -69,6 +70,7 @@ Markdown、TeX 和 Git 提交消息只做视觉折行，不自动重新排版正
 Python 优先采用项目根目录 `.venv/bin/python`，然后是已激活虚拟环境和系统 Python。
 运行 `uv sync` 后重启对应 LSP / Neovim 即可识别新环境。
 Rust 保留 rust-analyzer 的标准 Cargo 检查、构建脚本和过程宏分析。
+文件和文本检索使用当前工作目录；从项目目录启动 `nvim`，或用 `:cd` 切换范围。
 
 Kitty 保留 `Ctrl-Shift-C/V` 复制粘贴、`Ctrl-Shift-Enter` 新窗口、`Ctrl-Shift-T` 新标签，
 后两者继承当前目录；macOS 的 Command 快捷键仍可用。配置更新后可用 `Ctrl-Shift-F5` 重载。
@@ -131,6 +133,7 @@ sudo pacman -Syu --needed texlive-binextra texlive-latexrecommended \
 包括 latexmk；大型 TeX 包按项目需求安装。编译引擎由项目指定，中文文稿例如首行
 `% !TeX program = xelatex`，或在项目 `.latexmkrc` 中配置。VimTeX 不默认加 `-shell-escape`。
 PDF 由系统默认查看器打开；反向搜索可在以后选定 Skim / Zathura 工作流时再配置。
+没有 latexmk 时保留 LaTeX 编辑功能并关闭编译器；安装 TeX 工具后重启 Neovim 即可启用编译快捷键。
 
 Markdown 跨文件链接补全可选安装 Marksman：`brew install marksman` 或
 `sudo pacman -Syu --needed marksman`，随后重启 Neovim。
@@ -158,4 +161,4 @@ Python 工具升级要修改版本清单并重跑安装；系统包仍由 Homebr
 提交前运行 `git diff --cached`。`.gitignore` 只是辅助，不能代替检查：不要加入 SSH/GPG 密钥、
 Token、`.env`、AI 登录配置、会话历史、撤销文件、缓存、Git 身份和绝对本机路径。
 
-初始选型与实测见 [环境审计](docs/environment-audit.md)。
+初始选型见 [环境审计](docs/environment-audit.md)，实测范围与复测命令见 [验证记录](docs/validation.md)。
