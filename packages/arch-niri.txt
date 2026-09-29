@@ -29,6 +29,7 @@ blueman
 pavucontrol
 network-manager-applet
 python-gobject
+gtk4
 python-pillow
 gdk-pixbuf2
 librsvg

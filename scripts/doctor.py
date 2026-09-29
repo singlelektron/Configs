@@ -51,15 +51,15 @@ def check_desktop(config, missing):
     try:
         result = subprocess.run(
             ["/usr/bin/python3", "-c", "import gi; from PIL import Image; gi.require_version('GdkPixbuf', '2.0'); "
-             "from gi.repository import GdkPixbuf; "
+             "gi.require_version('Gtk', '4.0'); from gi.repository import GdkPixbuf, Gtk; "
              "assert any('svg' in f.get_extensions() for f in GdkPixbuf.Pixbuf.get_formats())"],
             capture_output=True, text=True, timeout=15)
         ok = result.returncode == 0
     except (OSError, subprocess.TimeoutExpired):
         ok = False
-    print(f"  {'OK' if ok else 'FAIL'} Pillow, Python GObject and SVG image loader")
+    print(f"  {'OK' if ok else 'FAIL'} Pillow, Python GObject, GTK 4 and SVG image loader")
     if not ok:
-        missing.append("Pillow/Python GObject/SVG loader")
+        missing.append("Pillow/Python GObject/GTK 4/SVG loader")
     print("Session checks: select Niri manually to verify lock, portals, input method and sound.")
     print("This command does not start services or switch the desktop session.")
 

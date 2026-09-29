@@ -31,17 +31,17 @@
   ],
   "custom/menu": {
     "format": "∑",
-    "tooltip-format": "Rose Observatory · 桌面控制",
+    "tooltip-format": "Rose Observatory · Desktop controls",
     "on-click": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" menu"
   },
   "niri/workspaces": {
     "format": "{index} {icon}",
     "all-outputs": false,
     "format-icons": {
-      "read": "阅读",
-      "code": "编程",
-      "study": "学习",
-      "play": "游戏",
+      "read": "Read",
+      "code": "Code",
+      "study": "Study",
+      "play": "Play",
       "default": "·"
     },
     "disable-click": false
@@ -70,7 +70,7 @@
     "scroll-step": 5,
     "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
     "on-click-right": "niri msg action spawn -- pavucontrol",
-    "tooltip-format": "{desc} · 右键打开音量控制"
+    "tooltip-format": "{desc} · Right-click for volume controls"
   },
   "network": {
     "format-wifi": "WIFI {signalStrength}%",
@@ -78,7 +78,7 @@
     "format-disconnected": "OFFLINE",
     "tooltip-format": "{ifname}\n{ipaddr}/{cidr}\n↓ {bandwidthDownBytes}  ↑ {bandwidthUpBytes}",
     "tooltip-format-wifi": "{essid} · {signalStrength}%\n{ipaddr}\n↓ {bandwidthDownBytes}  ↑ {bandwidthUpBytes}",
-    "tooltip-format-disconnected": "网络未连接",
+    "tooltip-format-disconnected": "Network disconnected",
     "interval": 5,
     "on-click": "niri msg action spawn -- nm-connection-editor"
   },
@@ -115,7 +115,7 @@
   },
   "custom/profile": {
     "format": "PERF",
-    "tooltip-format": "状态栏：性能 · 点击切换",
+    "tooltip-format": "Bar: Performance · Click to switch",
     "on-click": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" bar menu"
   },
   "battery": {
@@ -131,7 +131,7 @@
   },
   "backlight": {
     "format": "☀ {percent}%",
-    "tooltip-format": "屏幕亮度 · {percent}%",
+    "tooltip-format": "Brightness · {percent}%",
     "on-scroll-up": "brightnessctl --class=backlight set +5%",
     "on-scroll-down": "brightnessctl --class=backlight set 5%-"
   }

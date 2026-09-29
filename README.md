@@ -162,7 +162,8 @@ python3 scripts/deploy.py --restore /absolute/path/to/backup-id --apply
 ## 可选 Arch Niri 桌面
 
 完整桌面使用暗玫瑰界面与 4K 二次元壁纸，适合文档、代码、网课笔记和游戏。
-软件与配置仍分开部署；首次安装与切换方式见 [Niri 指南](docs/niri.md)。
+软件与配置仍分开部署；首次安装与切换方式见 [Niri 指南](docs/niri.md)，
+日常操作与窗口上下排列见 [独立快捷键文档](docs/niri-keybindings.md)。
 
 ```sh
 bash scripts/install-tools.sh --desktop niri
@@ -174,8 +175,8 @@ python3 scripts/doctor.py --desktop niri
 ```
 
 默认图片从记录的 HTTPS 来源获取并校验 SHA-256，保存在本机数据目录；仓库不包含图片。
-首次下载失败仍能以纯色背景启动，之后可重试。`Super-Shift-Space` 打开桌面菜单，
-可更换壁纸、恢复默认图和切换“均衡 / 专注 / 性能”信息栏。更换壁纸不会修改软件配色。
+首次下载失败仍能以纯色背景启动，之后可重试。`Super-Shift-Space` 打开英文 GTK4 桌面控制面板，Esc 关闭；
+可更换壁纸、恢复默认图和切换 Balanced / Focus / Performance 信息栏。更换壁纸不会修改软件配色。
 网课常亮独立控制，默认每次登录关闭；正常空闲 5 分钟锁屏、10 分钟熄屏，不自动挂起。
 
 保留 GNOME 与登录管理器，不自动启用、切换或更改默认会话。保存工作后自行在登录页选择

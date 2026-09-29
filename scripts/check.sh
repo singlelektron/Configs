@@ -109,6 +109,24 @@ assert not errors, "Waybar CSS errors: " + "; ".join(errors)
 print("Waybar GTK CSS parsing: PASS")
 PY
 
+  python3 - "$test_root/.config/niri/panel.css" <<'PY'
+import sys
+try:
+    import gi
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+except (ImportError, ValueError):
+    print("SKIP control panel CSS parsing: Python GObject / GTK 4 is not installed.")
+    sys.exit(0)
+
+errors = []
+provider = Gtk.CssProvider()
+provider.connect("parsing-error", lambda _, section, error: errors.append(str(error)))
+provider.load_from_path(sys.argv[1])
+assert not errors, "Control panel CSS errors: " + "; ".join(errors)
+print("Control panel GTK 4 CSS parsing: PASS")
+PY
+
   if command -v systemd-analyze >/dev/null 2>&1; then
     # Static parsing only: never enable/start units or contact the user manager.
     env HOME="$test_root" XDG_CONFIG_HOME="$test_root/.config" \

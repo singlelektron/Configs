@@ -64,6 +64,9 @@ screenshot-path "~/Pictures/Screenshots/%Y-%m-%d_%H-%M-%S.png"
 // Fcitx5 starts through its existing XDG autostart entry. Keep native GTK IME.
 // These variables apply to apps launched by niri, including Fuzzel.
 environment {
+    LANG "en_US.UTF-8"
+    LC_MESSAGES "en_US.UTF-8"
+    LANGUAGE "en_US:en"
     XMODIFIERS "@im=fcitx"
     QT_IM_MODULES "wayland;fcitx;ibus"
 }
@@ -105,6 +108,12 @@ window-rule {
 window-rule {
     match app-id="^(org.pulseaudio.pavucontrol|pavucontrol|nm-connection-editor|fcitx5-config-qt)$"
     open-floating true
+}
+window-rule {
+    match app-id="^io\\.github\\.dotfiles\\.DesktopPanel$"
+    open-floating true
+    default-column-width { fixed 680; }
+    default-window-height { fixed 720; }
 }
 
 binds {

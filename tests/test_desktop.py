@@ -74,6 +74,20 @@ class DesktopTests(unittest.TestCase):
         self.assertFalse(self.desktop.state.exists())
         self.assertFalse(self.commands)
 
+    def test_panel_launch_escapes_waybar_and_quotes_custom_config_path(self):
+        with mock.patch.object(desktopctl, "command") as run:
+            self.desktop.menu()
+        run.assert_called_once_with([
+            "niri", "msg", "action", "spawn", "--", "/usr/bin/python3",
+            str(self.desktop.config / "niri/desktopctl.py"), "panel"])
+
+    def test_panel_launch_rejects_nested_session_without_spawning(self):
+        with mock.patch.object(desktopctl, "niri_peer_pid", return_value=99), \
+                mock.patch.object(desktopctl, "command") as run:
+            with self.assertRaises(desktopctl.DesktopError):
+                self.desktop.menu()
+        run.assert_not_called()
+
     def test_cancelled_profile_menu_has_no_side_effect(self):
         with mock.patch.object(self.desktop, "menu_select", return_value=None):
             self.desktop.bar("menu")
@@ -222,6 +236,20 @@ class DesktopTests(unittest.TestCase):
             with self.assertRaises(desktopctl.DesktopError):
                 self.desktop.presentation("toggle")
         self.assertFalse((self.desktop.runtime() / "presentation").exists())
+
+    def test_explicit_awake_state_survives_a_stale_panel_toggle(self):
+        # A hotkey can enable awake before the panel's next periodic refresh.
+        flag = self.desktop.runtime() / "presentation"
+        desktopctl.atomic_write(flag, "on\n")
+        with mock.patch.object(desktopctl, "command") as run:
+            self.desktop.presentation("on")
+        self.assertTrue(flag.exists())
+        run.assert_not_called()
+        self.assertEqual(self.commands, [("show", "--property=MainPID", "--value", "niri.service")])
+        self.desktop.presentation("off")
+        self.desktop.presentation("off")
+        self.assertFalse(flag.exists())
+        self.assertEqual(self.commands.count(("start", "dotfiles-niri-idle.service")), 1)
 
     def test_sleep_events_use_independent_lock_service(self):
         with mock.patch.object(desktopctl.os, "execvp") as execute:

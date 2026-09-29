@@ -100,7 +100,10 @@ def locations(home=None, environ=None):
 NIRI_FILES = (
     ("niri/config.kdl", "platforms/linux/niri/config.kdl"),
     ("niri/desktopctl.py", "config/desktop/desktopctl.py"),
+    ("niri/panel.py", "config/desktop/panel.py"),
+    ("niri/panel.css", "config/desktop/panel.css"),
     ("niri/wallpaper.json", "config/desktop/wallpaper.json"),
+    ("environment.d/60-dotfiles-language.conf", "platforms/linux/environment.d/60-dotfiles-language.conf"),
     ("waybar/balanced.json", "config/waybar/balanced.json"),
     ("waybar/focus.json", "config/waybar/focus.json"),
     ("waybar/performance.json", "config/waybar/performance.json"),

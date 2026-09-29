@@ -2,6 +2,7 @@
 """Small Niri controls. Configuration is tracked; preferences and images are not."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -156,8 +157,8 @@ class Desktop:
 
     def bar(self, profile):
         if profile == "menu":
-            labels = {"均衡": "balanced", "专注": "focus", "性能": "performance"}
-            choice = self.menu_select("信息布局", labels)
+            labels = {"Balanced": "balanced", "Focus": "focus", "Performance": "performance"}
+            choice = self.menu_select("Bar layout", labels)
             if not choice:
                 return
             profile = labels[choice]
@@ -224,8 +225,8 @@ class Desktop:
             self.fetch_wallpaper()
             return
         if action == "choose":
-            result = command(["zenity", "--file-selection", "--title=更换壁纸",
-                              "--file-filter=图片 | *.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff"],
+            result = command(["zenity", "--file-selection", "--title=Choose wallpaper",
+                              "--file-filter=Images | *.jpg *.jpeg *.png *.webp *.bmp *.tif *.tiff"],
                              text=True, capture_output=True, check=False)
             if result.returncode:
                 return
@@ -275,12 +276,17 @@ class Desktop:
         flag = self.runtime() / "presentation"
         if action == "status":
             enabled = flag.exists()
-            emit("常亮 ON" if enabled else "常亮 OFF",
-                 "网课常亮：暂停空闲锁屏与熄屏；手动锁屏和睡前锁屏仍有效",
+            emit("AWAKE ON" if enabled else "AWAKE OFF",
+                 "Keep awake: pause idle lock and screen timeout; manual and sleep locking stay active",
                  "active" if enabled else "inactive")
             return
         self.require_session()
-        if flag.exists():
+        enabled = flag.exists()
+        if action not in ("toggle", "on", "off"):
+            raise DesktopError("Unknown keep-awake action")
+        if (action == "on" and enabled) or (action == "off" and not enabled):
+            return
+        if enabled:
             systemctl("start", unit("idle"))
             flag.unlink()
         else:
@@ -305,27 +311,18 @@ class Desktop:
 
     def menu(self):
         self.require_session()
-        options = ("信息布局", "更换壁纸", "恢复默认壁纸", "网课常亮开关", "锁屏",
-                   "声音设置", "网络设置", "蓝牙设置", "快捷键帮助", "退出 Niri")
-        choice = self.menu_select("桌面", options)
-        if choice == "信息布局":
-            self.bar("menu")
-        elif choice == "更换壁纸":
-            self.wallpaper("choose")
-        elif choice == "恢复默认壁纸":
-            self.wallpaper("reset")
-        elif choice == "网课常亮开关":
-            self.presentation("toggle")
-        elif choice == "锁屏":
-            systemctl("start", unit("lock"))
-        elif choice in ("声音设置", "网络设置", "蓝牙设置"):
-            application = {"声音设置": "pavucontrol", "网络设置": "nm-connection-editor",
-                           "蓝牙设置": "blueman-manager"}[choice]
-            command(["niri", "msg", "action", "spawn", "--", application])
-        elif choice == "快捷键帮助":
-            command(["niri", "msg", "action", "show-hotkey-overlay"])
-        elif choice == "退出 Niri":
-            command(["niri", "msg", "action", "quit"])
+        # Launch outside Waybar's cgroup: switching bar profile must not kill
+        # the control panel that requested it.
+        command(["niri", "msg", "action", "spawn", "--", "/usr/bin/python3",
+                 str(self.config / "niri/desktopctl.py"), "panel"])
+
+    def panel(self):
+        self.require_session()
+        path = Path(__file__).resolve().with_name("panel.py")
+        spec = importlib.util.spec_from_file_location("dotfiles_panel", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.run(self)
 
 
 def metrics(kind):
@@ -367,13 +364,13 @@ def metrics(kind):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
-    for action in ("session-start", "waybar", "wallpaper-run", "idle", "session-events", "lock", "menu"):
+    for action in ("session-start", "waybar", "wallpaper-run", "idle", "session-events", "lock", "menu", "panel"):
         sub.add_parser(action)
     sub.add_parser("bar").add_argument("profile", choices=(*PROFILES, "menu"))
     wall = sub.add_parser("wallpaper")
     wall.add_argument("operation", choices=("choose", "set", "reset", "fetch"))
     wall.add_argument("path", nargs="?")
-    sub.add_parser("presentation").add_argument("operation", choices=("toggle", "status"))
+    sub.add_parser("presentation").add_argument("operation", choices=("toggle", "status", "on", "off"))
     sub.add_parser("metrics").add_argument("kind", choices=("gpu", "hardware"))
     args = parser.parse_args()
     try:
@@ -394,7 +391,7 @@ def main():
     except (DesktopError, OSError, ValueError, ImportError) as error:
         print(f"Desktop: {error}", file=sys.stderr)
         if os.environ.get("NIRI_SOCKET") and shutil.which("notify-send"):
-            command(["notify-send", "桌面操作失败", str(error)], check=False)
+            command(["notify-send", "Desktop action failed", str(error)], check=False)
         return 1
 
 

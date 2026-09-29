@@ -1,0 +1,99 @@
+/* Solid dark rose surfaces; scoped so this cannot affect other GTK apps. */
+window.desktop-panel {
+    background: #19151c;
+    color: #ede5ec;
+    font-family: "Cantarell", "Noto Sans", "Noto Sans CJK SC", sans-serif;
+    font-size: 14px;
+    border: 1px solid #574254;
+    border-radius: 12px;
+}
+.desktop-panel .panel-header { padding: 22px 24px 20px; }
+.desktop-panel .eyebrow {
+    color: #f2a5c7;
+    font-family: "JetBrainsMonoNL Nerd Font Mono", monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+}
+.desktop-panel .panel-title { font-size: 27px; font-weight: 700; }
+.desktop-panel .panel-content { padding: 0 24px 20px; }
+.desktop-panel .section-label {
+    color: #c9adeb;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.3px;
+}
+.desktop-panel .section-detail { color: #b3a2b1; font-size: 12px; }
+.desktop-panel button {
+    color: #ede5ec;
+    background: #241d29;
+    background-image: none;
+    border: 1px solid #574254;
+    border-radius: 9px;
+    box-shadow: none;
+    text-shadow: none;
+    padding: 10px 14px;
+    font-weight: 500;
+    transition: background 120ms, border-color 120ms;
+}
+.desktop-panel button:hover { background: #332637; border-color: #9b718b; }
+.desktop-panel button:active { background: #3b2c3b; }
+.desktop-panel button:focus-visible { outline: 2px solid #f2a5c7; outline-offset: 2px; }
+.desktop-panel button.profile-card { padding: 14px; }
+.desktop-panel button.profile-card:checked {
+    color: #ede5ec;
+    background: #3b2c3b;
+    border-color: #f2a5c7;
+}
+.desktop-panel button.profile-card image { color: #b3a2b1; margin-bottom: 4px; }
+.desktop-panel button.profile-card:checked image { color: #f2a5c7; }
+.desktop-panel .card-title { font-size: 14px; font-weight: 600; }
+.desktop-panel .card-detail { color: #b3a2b1; font-size: 12px; font-weight: 400; }
+.desktop-panel .setting-row {
+    background: #241d29;
+    border: 1px solid #574254;
+    border-radius: 9px;
+    padding: 15px;
+}
+.desktop-panel .setting-row > image { color: #c9adeb; }
+.desktop-panel switch {
+    background: #19151c;
+    border: 1px solid #574254;
+    border-radius: 16px;
+    min-width: 44px;
+    min-height: 24px;
+}
+.desktop-panel switch:checked { background: #f2a5c7; border-color: #f2a5c7; }
+.desktop-panel switch slider {
+    background: #b3a2b1;
+    border: none;
+    border-radius: 50%;
+    box-shadow: none;
+    min-height: 18px;
+    min-width: 18px;
+    margin: 3px;
+}
+.desktop-panel switch:checked slider { background: #241d29; }
+.desktop-panel switch:focus-visible { outline: 2px solid #c9adeb; outline-offset: 3px; }
+.desktop-panel button.device-card { padding: 18px 14px; }
+.desktop-panel button.device-card image { color: #c9adeb; }
+.desktop-panel button.accent-button { color: #19151c; background: #f2a5c7; border-color: #f2a5c7; }
+.desktop-panel button.accent-button:hover { background: #ffc4de; }
+.desktop-panel button.close-button { padding: 8px; border: none; background: transparent; }
+.desktop-panel button.close-button:hover { background: #3b2c3b; }
+.desktop-panel .session-row { margin-top: 2px; }
+.desktop-panel .session-row button { padding: 12px 16px; }
+.desktop-panel .panel-footer {
+    border-top: 1px solid #3b2c3b;
+    padding: 12px 24px;
+    min-height: 20px;
+}
+.desktop-panel .status { color: #b3a2b1; font-size: 12px; }
+.desktop-panel .status.error { color: #f08091; }
+.desktop-panel .key-hint {
+    color: #b3a2b1;
+    font-family: "JetBrainsMonoNL Nerd Font Mono", monospace;
+    font-size: 10px;
+}
+.desktop-panel spinner { color: #f2a5c7; }
+.desktop-panel scrollbar { background: transparent; }
+.desktop-panel scrollbar slider { background: #574254; min-width: 4px; border-radius: 4px; }
