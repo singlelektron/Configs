@@ -1,5 +1,21 @@
 # 验证记录与复测
 
+## Steam 菜单焦点修复：2026-09-29
+
+用户确认是下拉菜单一闪即消失、Steam 主进程仍在；本机为 Niri 26.04、
+Xwayland Satellite 0.8.2，与上游 #489/#468 描述吻合。
+构建并安装上游正式版 0.8.3，固定提交 `b83eab900644e4c7c77982ce3d44cb490f0c5e1d`，
+使用 `cargo build --release --locked`；缺失的 libclang 及头文件仅从校验过的稳定仓库包
+提取到临时构建目录，没有替换系统包或启用 testing。
+
+- Linux：`cargo test --release --locked popup_` 通过 9 项单元测试和 1 项集成测试，
+  包含 override-redirect 弹窗焦点回归；可执行文件报告 `v0.8.3`，运行库均可解析。
+- 版本化二进制、构建记录与私有路径覆盖保存在仓库外；真实部署配置 `niri validate` 通过。
+  `bash scripts/check.sh` 的 73 项回归及原生配置检查通过。
+- 当前 Steam 和 Niri 会话没有被中止。集成的 Satellite 需重新登录后才更新；
+  Steam 实际菜单、全屏和游戏鼠标仍待用户重新登录后验收。
+- macOS：不适用。构建、启用和回退步骤见 [Steam 菜单排查](niri.md#steam-顶部菜单一闪就关闭)。
+
 ## 英文界面与控制面板：2026-09-29
 
 - Linux：`bash scripts/check.sh` 通过 73 项 Python 回归、Neovim/Kitty 检查、

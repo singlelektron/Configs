@@ -211,4 +211,6 @@ binds {
 }
 
 // Includes remain outside Git. Do not symlink the entire ~/.config/niri directory.
+// Optional versioned Xwayland override while the distribution catches up with fixes.
+include optional=true "../dotfiles-local/xwayland-satellite.kdl"
 include optional=true "../dotfiles-local/niri.kdl"

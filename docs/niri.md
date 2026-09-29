@@ -180,6 +180,61 @@ niri validate --config "${XDG_CONFIG_HOME:-$HOME/.config}/niri/config.kdl"
 帧时间、切回桌面、鼠标捕获和休眠恢复，出现问题就移除本机 VRR 配置。
 游戏 app-id 可能不同，可用 `niri msg windows` 确认后在本机增加规则。
 
+### Steam 顶部菜单一闪就关闭
+
+如果 Steam 主窗口仍在，只是顶部菜单或右键菜单刚打开就消失，这是
+Xwayland Satellite 0.8.2 的已知弹窗焦点问题，见 [上游报告 #489](https://github.com/Supreeeme/xwayland-satellite/issues/489)。
+[正式版 0.8.3](https://github.com/Supreeeme/xwayland-satellite/releases/tag/v0.8.3)
+已包含 [修复 #494](https://github.com/Supreeeme/xwayland-satellite/pull/494)。
+整个 Steam 进程退出属于另一种症状，应先查日志，不能直接套用此判断。
+
+2026-09-29 核查时，[Arch extra](https://archlinux.org/packages/extra/x86_64/xwayland-satellite/)
+仍提供 0.8.2，0.8.3 只在 extra-testing。先检查当前仓库版本；若 extra 已有 0.8.3 或更新版本，
+正常执行 `sudo pacman -Syu --needed xwayland-satellite`，随后重新登录即可。
+无需为这个修复全局启用 testing 仓库。
+
+稳定仓库尚未更新时，可临时构建固定的上游正式版，保留系统包并仅在本机指定替代路径。
+[上游构建依赖](https://github.com/Supreeeme/xwayland-satellite#building)包括 Rust/Cargo、Clang（含 libclang）、
+Git、xcb、xcb-util-cursor 和 Xwayland；本机还需 pkg-config（Arch 包 `pkgconf`）。
+缺少工具时用 `pacman -Syu --needed` 安装相应包；已有 rustup 工具链时使用其 Cargo，
+不必再安装与 rustup 冲突的 Arch `rust` 包。
+
+```sh
+(
+    set -eu
+    satellite_build="$(mktemp -d -t dotfiles-satellite-0.8.3.XXXXXX)"
+    git clone --depth 1 --branch v0.8.3 \
+        https://github.com/Supreeeme/xwayland-satellite.git "$satellite_build/src"
+    test "$(git -C "$satellite_build/src" rev-parse HEAD)" = \
+        b83eab900644e4c7c77982ce3d44cb490f0c5e1d
+    cd "$satellite_build/src"
+    cargo build --release --locked
+    satellite_dest="${XDG_DATA_HOME:-$HOME/.local/share}/dotfiles/tools/xwayland-satellite/0.8.3/xwayland-satellite"
+    install -Dm755 target/release/xwayland-satellite "$satellite_dest"
+    "$satellite_dest" -version
+    printf 'Niri binary path: %s\n' "$satellite_dest"
+)
+```
+
+创建 `${XDG_CONFIG_HOME:-~/.config}/dotfiles-local/xwayland-satellite.kdl`；若已存在先备份，
+将下面占位符换为上面打印的**绝对路径**。源码、二进制与此本机文件都不进入 Git。
+
+```kdl
+xwayland-satellite {
+    path "/absolute/path/to/dotfiles/tools/xwayland-satellite/0.8.3/xwayland-satellite"
+}
+```
+
+主配置可选读取这个文件，再读取硬件设置 `dotfiles-local/niri.kdl`。
+运行 `niri validate --config "${XDG_CONFIG_HOME:-$HOME/.config}/niri/config.kdl"`，
+保存工作并**注销、重新登录 Niri**，然后检查 Steam 菜单和游戏。
+[上游说明](https://github.com/Supreeeme/xwayland-satellite#compositor-integration)要求集成模式更换二进制后重启 compositor；
+仅重开 Steam 不会替换已经运行的 Satellite。不要 `pkill xwayland-satellite`，这会中断其他 X11 应用。
+
+回滚时只删除或改名备份 `dotfiles-local/xwayland-satellite.kdl`，重新登录便恢复系统包；
+保留显示器设置 `dotfiles-local/niri.kdl`。以后官方 extra 更新至 0.8.3 或更新版本时，
+完整升级后同样移除此临时覆盖并重新登录，恢复由 pacman 管理更新。
+
 ## 快捷键与窗口排列
 
 完整表格与上下排列的操作示例单独保存在 [Niri 快捷键与窗口排列](niri-keybindings.md)。
