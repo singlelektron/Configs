@@ -1,0 +1,140 @@
+{
+  "name": "balanced",
+  "layer": "top",
+  "position": "top",
+  "height": 36,
+  "spacing": 0,
+  "exclusive": true,
+  "passthrough": false,
+  "fixed-center": true,
+  "reload_style_on_change": true,
+  "modules-left": [
+    "custom/menu",
+    "niri/workspaces",
+    "niri/window"
+  ],
+  "modules-center": [
+    "clock"
+  ],
+  "modules-right": [
+    "custom/presentation",
+    "mpris",
+    "pulseaudio",
+    "network",
+    "cpu",
+    "memory",
+    "backlight",
+    "battery",
+    "tray",
+    "custom/profile"
+  ],
+  "custom/menu": {
+    "format": "∑",
+    "tooltip-format": "Rose Observatory · Desktop controls",
+    "on-click": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" menu"
+  },
+  "niri/workspaces": {
+    "format": "{index} {icon}",
+    "all-outputs": false,
+    "format-icons": {
+      "read": "Read",
+      "code": "Code",
+      "study": "Study",
+      "play": "Play",
+      "default": "·"
+    },
+    "disable-click": false
+  },
+  "niri/window": {
+    "format": "{}",
+    "max-length": 45,
+    "separate-outputs": true,
+    "tooltip": false
+  },
+  "clock": {
+    "interval": 30,
+    "format": "{:%m.%d  %a  %H:%M}",
+    "format-alt": "{:%Y-%m-%d  %H:%M}",
+    "tooltip-format": "<big>{:%Y · %B}</big>\n<tt><small>{calendar}</small></tt>"
+  },
+  "custom/presentation": {
+    "exec": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" presentation status",
+    "return-type": "json",
+    "interval": 3,
+    "on-click": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" presentation toggle"
+  },
+  "mpris": {
+    "format": "{status_icon} {title}",
+    "format-paused": "{status_icon} {title}",
+    "status-icons": {
+      "playing": "▶",
+      "paused": "Ⅱ",
+      "stopped": "■"
+    },
+    "max-length": 24,
+    "tooltip-format": "{player}: {title}\n{artist}",
+    "on-click": "playerctl play-pause",
+    "on-click-right": "playerctl next"
+  },
+  "pulseaudio": {
+    "format": "VOL {volume}%",
+    "format-muted": "MUTE",
+    "scroll-step": 5,
+    "on-click": "wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle",
+    "on-click-right": "niri msg action spawn -- pavucontrol",
+    "tooltip-format": "{desc} · Right-click for volume controls"
+  },
+  "network": {
+    "format-wifi": "WIFI {signalStrength}%",
+    "format-ethernet": "LAN",
+    "format-disconnected": "OFFLINE",
+    "tooltip-format": "{ifname}\n{ipaddr}/{cidr}\n↓ {bandwidthDownBytes}  ↑ {bandwidthUpBytes}",
+    "tooltip-format-wifi": "{essid} · {signalStrength}%\n{ipaddr}\n↓ {bandwidthDownBytes}  ↑ {bandwidthUpBytes}",
+    "tooltip-format-disconnected": "Network disconnected",
+    "interval": 5,
+    "on-click": "niri msg action spawn -- nm-connection-editor"
+  },
+  "cpu": {
+    "format": "CPU {usage}%",
+    "interval": 5,
+    "states": {
+      "warning": 75,
+      "critical": 95
+    }
+  },
+  "memory": {
+    "format": "RAM {percentage}%",
+    "tooltip-format": "{used:0.1f} / {total:0.1f} GiB",
+    "interval": 10,
+    "states": {
+      "warning": 80,
+      "critical": 95
+    }
+  },
+  "tray": {
+    "icon-size": 16,
+    "spacing": 8
+  },
+  "custom/profile": {
+    "format": "BAL",
+    "tooltip-format": "Bar: Balanced · Click to switch",
+    "on-click": "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" bar menu"
+  },
+  "battery": {
+    "format": "BAT {capacity}%",
+    "format-charging": "BAT +{capacity}%",
+    "format-plugged": "AC {capacity}%",
+    "tooltip-format": "{timeTo} · {capacity}%",
+    "interval": 30,
+    "states": {
+      "warning": 25,
+      "critical": 10
+    }
+  },
+  "backlight": {
+    "format": "☀ {percent}%",
+    "tooltip-format": "Brightness · {percent}%",
+    "on-scroll-up": "brightnessctl --class=backlight set +5%",
+    "on-scroll-down": "brightnessctl --class=backlight set 5%-"
+  }
+}

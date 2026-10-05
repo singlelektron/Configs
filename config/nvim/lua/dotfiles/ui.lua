@@ -1,22 +1,33 @@
 local M = {}
 
--- Keep these colors aligned with Kitty; future desktop components can use the
--- same restrained slate / cyan palette without depending on a theme plugin.
+-- Shared with Kitty, LazyGit and the desktop; rose marks active controls while
+-- diagnostic and ANSI colors retain their distinct meanings.
 local colors = {
-  background = "#161b26",
-  surface = "#1b2230",
-  selection = "#25364a",
-  border = "#344155",
-  foreground = "#d6deeb",
-  muted = "#8a97ad",
-  cyan = "#67d4e8",
-  blue = "#82aaff",
-  green = "#9ece6a",
-  yellow = "#e0af68",
-  red = "#f7768e",
+  background = "#19151c",
+  surface = "#241d29",
+  selection = "#3b2c3b",
+  border = "#574254",
+  foreground = "#ede5ec",
+  muted = "#b3a2b1",
+  accent = "#f2a5c7",
+  cyan = "#9bcbd3",
+  blue = "#a7b9ed",
+  green = "#a6c7a0",
+  yellow = "#e7c38c",
+  red = "#f08091",
 }
 
 function M.apply_palette()
+  -- Neovim terminal jobs (including LazyGit) use the same ANSI palette as Kitty.
+  local terminal = {
+    colors.surface, colors.red, colors.green, colors.yellow,
+    colors.blue, "#c9adeb", colors.cyan, colors.foreground,
+    colors.muted, "#ff9cad", "#c0dab9", "#f4d7a7",
+    "#c2cdf5", "#e0c8f8", "#b8dfe4", "#fff5fb",
+  }
+  for index, color in ipairs(terminal) do
+    vim.g["terminal_color_" .. (index - 1)] = color
+  end
   local groups = {
     -- NONE inherits the terminal background, including Kitty's transparency.
     Normal = { fg = colors.foreground, bg = "NONE" },
@@ -24,17 +35,17 @@ function M.apply_palette()
     SignColumn = { bg = "NONE" },
     EndOfBuffer = { fg = colors.muted, bg = "NONE" },
     LineNr = { fg = colors.muted, bg = "NONE" },
-    CursorLineNr = { fg = colors.cyan, bold = true },
+    CursorLineNr = { fg = colors.accent, bold = true },
     CursorLine = { bg = colors.surface },
     WinSeparator = { fg = colors.border, bg = "NONE" },
     Visual = { bg = colors.selection },
     Search = { fg = colors.background, bg = colors.yellow },
-    IncSearch = { fg = colors.background, bg = colors.cyan },
+    IncSearch = { fg = colors.background, bg = colors.accent },
     NormalFloat = { fg = colors.foreground, bg = colors.surface },
     FloatBorder = { fg = colors.border, bg = colors.surface },
-    FloatTitle = { fg = colors.cyan, bg = colors.surface, bold = true },
+    FloatTitle = { fg = colors.accent, bg = colors.surface, bold = true },
     Pmenu = { fg = colors.foreground, bg = colors.surface },
-    PmenuSel = { fg = colors.background, bg = colors.cyan },
+    PmenuSel = { fg = colors.background, bg = colors.accent },
     PmenuSbar = { bg = colors.surface },
     PmenuThumb = { bg = colors.muted },
     StatusLine = { fg = colors.foreground, bg = colors.surface },
@@ -44,9 +55,9 @@ function M.apply_palette()
     String = { fg = colors.green },
     Function = { fg = colors.blue },
     Identifier = { fg = colors.foreground },
-    Statement = { fg = colors.cyan },
+    Statement = { fg = colors.accent },
     Type = { fg = colors.blue },
-    Special = { fg = colors.cyan },
+    Special = { fg = colors.accent },
     DiagnosticError = { fg = colors.red },
     DiagnosticWarn = { fg = colors.yellow },
     DiagnosticInfo = { fg = colors.blue },
@@ -59,9 +70,9 @@ function M.apply_palette()
     NvimTreeEndOfBuffer = { fg = colors.surface, bg = colors.surface },
     NvimTreeWinSeparator = { fg = colors.border, bg = colors.surface },
     NvimTreeCursorLine = { bg = colors.selection },
-    NvimTreeRootFolder = { fg = colors.cyan, bold = true },
+    NvimTreeRootFolder = { fg = colors.accent, bold = true },
     NvimTreeFolderName = { fg = colors.blue },
-    NvimTreeOpenedFolderName = { fg = colors.cyan },
+    NvimTreeOpenedFolderName = { fg = colors.accent },
     NvimTreeFolderIcon = { fg = colors.muted },
     NvimTreeIndentMarker = { fg = colors.selection },
     NvimTreeGitDirtyIcon = { fg = colors.yellow },
@@ -110,7 +121,7 @@ end
 function M.setup()
   local theme = {
     normal = {
-      a = { fg = colors.background, bg = colors.cyan, gui = "bold" },
+      a = { fg = colors.background, bg = colors.accent, gui = "bold" },
       b = { fg = colors.foreground, bg = colors.surface },
       c = { fg = colors.muted, bg = colors.surface },
     },
@@ -163,7 +174,7 @@ function M.setup()
           symbols = { modified = " +", alternate_file = "", directory = "/" },
           filetype_names = { NvimTree = "Files", fugitive = "Git status", lazygit = "Git" },
           buffers_color = {
-            active = { fg = colors.cyan, bg = colors.selection, gui = "bold" },
+            active = { fg = colors.accent, bg = colors.selection, gui = "bold" },
             inactive = { fg = colors.muted, bg = colors.surface },
           },
         },

@@ -1,0 +1,13 @@
+# Started only by desktopctl session-start; deliberately not enable-able.
+[Unit]
+Description=Rose Observatory idle display and lock policy
+PartOf=niri.service graphical-session.target
+After=niri.service graphical-session.target
+Requisite=niri.service graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 "%E/niri/desktopctl.py" idle
+Restart=on-failure
+RestartSec=2
+Slice=session.slice

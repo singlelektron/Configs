@@ -97,16 +97,51 @@ def locations(home=None, environ=None):
     return config, state
 
 
-def entries_for(repo, config, platform):
+NIRI_FILES = (
+    ("niri/config.kdl", "platforms/linux/niri/config.kdl"),
+    ("niri/desktopctl.py", "config/desktop/desktopctl.py"),
+    ("niri/panel.py", "config/desktop/panel.py"),
+    ("niri/panel.css", "config/desktop/panel.css"),
+    ("niri/launcher.py", "config/desktop/launcher.py"),
+    ("niri/launcher_model.py", "config/desktop/launcher_model.py"),
+    ("niri/launcher_backend.py", "config/desktop/launcher_backend.py"),
+    ("niri/terminal-bin/xdg-terminal-exec", "config/desktop/terminal-bin/xdg-terminal-exec"),
+    ("niri/wallpaper.json", "config/desktop/wallpaper.json"),
+    ("environment.d/60-dotfiles-language.conf", "platforms/linux/environment.d/60-dotfiles-language.conf"),
+    ("waybar/balanced.json", "config/waybar/balanced.json"),
+    ("waybar/focus.json", "config/waybar/focus.json"),
+    ("waybar/performance.json", "config/waybar/performance.json"),
+    ("waybar/style.css", "config/waybar/style.css"),
+    ("fuzzel/fuzzel.ini", "config/fuzzel/fuzzel.ini"),
+    ("mako/config", "config/mako/config"),
+    ("swaylock/config", "config/swaylock/config"),
+    ("systemd/user/dotfiles-niri-waybar.service", "platforms/linux/systemd/dotfiles-niri-waybar.service"),
+    ("systemd/user/dotfiles-niri-mako.service", "platforms/linux/systemd/dotfiles-niri-mako.service"),
+    ("systemd/user/dotfiles-niri-wallpaper.service", "platforms/linux/systemd/dotfiles-niri-wallpaper.service"),
+    ("systemd/user/dotfiles-niri-idle.service", "platforms/linux/systemd/dotfiles-niri-idle.service"),
+    ("systemd/user/dotfiles-niri-session-events.service", "platforms/linux/systemd/dotfiles-niri-session-events.service"),
+    ("systemd/user/dotfiles-niri-lock.service", "platforms/linux/systemd/dotfiles-niri-lock.service"),
+    ("systemd/user/dotfiles-niri-polkit.service", "platforms/linux/systemd/dotfiles-niri-polkit.service"),
+)
+
+
+def entries_for(repo, config, platform, desktop=None):
     if platform not in ("macos", "linux"):
         raise DeploymentError("Only macOS and Linux are supported.")
-    return [
+    if desktop not in (None, "niri"):
+        raise DeploymentError("Unsupported desktop profile; expected niri.")
+    if desktop and platform != "linux":
+        raise DeploymentError("The niri desktop profile is Linux-only.")
+    pairs = [
         (config / "kitty/kitty.conf", repo / "config/kitty/kitty.conf"),
         (config / "kitty/theme.conf", repo / "config/kitty/theme.conf"),
         (config / "kitty/platform.conf", repo / f"platforms/{platform}/kitty.conf"),
         (config / "nvim", repo / "config/nvim"),
         (config / "lazygit/config.yml", repo / "config/lazygit/config.yml"),
     ]
+    if desktop == "niri":
+        pairs.extend((config / target, repo / source) for target, source in NIRI_FILES)
+    return pairs
 
 
 def save_manifest(directory, manifest):
@@ -166,9 +201,9 @@ def move_preserving(source, target, prepare=None):
             shutil.rmtree(source)
 
 
-def install(repo, config, state, platform, apply=False):
+def install(repo, config, state, platform, apply=False, desktop=None):
     repo = repo.resolve()
-    pairs = entries_for(repo, config, platform)
+    pairs = entries_for(repo, config, platform, desktop)
     backup_root = state / "dotfiles/backups"
     changed = []
     # Preflight every entry before any directories, links, or backups are created.
@@ -207,6 +242,8 @@ def install(repo, config, state, platform, apply=False):
     directory = Path(tempfile.mkdtemp(prefix=stamp, dir=backup_root))
     manifest = {"version": 1, "repo": str(repo), "config": str(config),
                 "platform": platform, "entries": changed, "restored": False}
+    if desktop:
+        manifest["desktop"] = desktop
     save_manifest(directory, manifest)
     try:
         for entry in changed:
@@ -241,7 +278,7 @@ def load_manifest(directory):
         repo = absolute_path(manifest["repo"])
         config = absolute_path(manifest["config"])
         expected = {str(target): str(source) for target, source in
-                    entries_for(repo, config, manifest["platform"])}
+                    entries_for(repo, config, manifest["platform"], manifest.get("desktop"))}
         seen = set()
         for index, entry in enumerate(manifest["entries"]):
             target = entry["target"]
@@ -333,16 +370,19 @@ def main(argv=None):
     parser.add_argument("--apply", action="store_true", help="perform the planned changes (default: dry run)")
     parser.add_argument("--home", type=Path, help="use HOME/.config and HOME/.local/state, ignoring XDG variables")
     parser.add_argument("--restore", type=Path, metavar="BACKUP_DIR", help="restore a deployment from its backup directory")
+    parser.add_argument("--desktop", choices=("niri",), help="also deploy the optional Linux desktop files")
     args = parser.parse_args(argv)
     if args.restore and args.home:
         parser.error("--restore reads destinations from its manifest; omit --home")
+    if args.restore and args.desktop:
+        parser.error("--restore reads its desktop profile from the manifest; omit --desktop")
     try:
         if args.restore:
             restore(args.restore, args.apply)
         else:
             platform = "macos" if sys.platform == "darwin" else "linux" if sys.platform.startswith("linux") else "unsupported"
             config, state = locations(args.home)
-            install(Path(__file__).resolve().parents[1], config, state, platform, args.apply)
+            install(Path(__file__).resolve().parents[1], config, state, platform, args.apply, args.desktop)
     except (DeploymentError, OSError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
