@@ -8,7 +8,7 @@ macOS 与 Arch Linux 共用的 Kitty / Neovim 配置，以及可选的 Arch Niri
 - Git：文件树与状态栏显示改动；LazyGit 提供鼠标友好的管理界面，保留 Fugitive 和命令行。
 - Rust：rust-analyzer；Python：basedpyright + Ruff；LaTeX：texlab + VimTeX；Markdown：实时浏览器预览与 KaTeX 数学公式，可选 Marksman。
 - AI agent 在独立终端工作；Neovim 检查外部文件变化，保留有未保存修改时的冲突提示。
-- Niri：柔和粉紫二次元壁纸、深色顶部音乐岛、浅粉控制中心、四个工作区、Arch 更新提示、中文输入、网课常亮与独立锁屏；[完整使用说明](docs/niri.md)。
+- Niri：柔和粉紫二次元壁纸、深色顶部音乐岛、深色控制中心、四个工作区、Arch 更新提示、中文输入、网课常亮与独立锁屏；[完整使用说明](docs/niri.md)。
 - 本地差异放在仓库外，旧配置和 Neovim 插件数据保留。不管理 shell、SSH、Git 身份或默认登录会话。
 
 ## 新机器恢复
@@ -161,7 +161,7 @@ python3 scripts/deploy.py --restore /absolute/path/to/backup-id --apply
 
 ## 可选 Arch Niri 桌面
 
-完整桌面使用浅樱粉面板、深色顶部胶囊与深紫灰半透明终端，搭配低饱和粉紫二次元壁纸，
+完整桌面使用浅樱粉启动器、深色控制中心与顶部胶囊与深紫灰半透明终端，搭配低饱和粉紫二次元壁纸，
 适合文档、代码、网课笔记和游戏。当前默认壁纸为 1920×1200，在 4K 屏幕上裁剪或放大。
 软件与配置仍分开部署；首次安装与切换方式见 [Niri 指南](docs/niri.md)，
 日常操作与窗口上下排列见 [独立快捷键文档](docs/niri-keybindings.md)。
@@ -184,10 +184,10 @@ python3 scripts/desktop-appearance.py --apply
 ```
 
 默认图片从记录的 HTTPS 来源获取并校验 SHA-256，保存在本机数据目录；仓库不包含图片。
-首次下载失败仍能以纯色背景启动，之后可重试。`Super+Shift+Space` 或左上入口打开浅粉 GTK4 控制中心，
+首次下载失败仍能以纯色背景启动，之后可重试。`Super+Shift+Space` 或左上入口打开深色 GTK4 控制中心，
 位于状态栏左侧下方，Esc 关闭；可调整音量、常亮和勿扰、更换壁纸、切换信息密度，查看 CPU、RAM 和可用温度。
 更换壁纸不会修改软件配色。`Super+D` 打开居中的 GTK4 应用选择窗口，支持搜索、↑↓ / Enter 和鼠标点击，
-包含原生与 Flatpak 应用。默认 Quickshell 的 Focus 隐藏日期与更新数量，Performance 给时钟增加秒显示。
+包含原生与 Flatpak 应用。默认 Quickshell 的 Focus 隐藏搜索、网络、日期与更新数量；Performance 显示秒和音量百分比。
 中央音乐岛可展开播放控制与进度，优先控制网易云 GTK4；右侧更新入口检查 Arch 官方仓库并可在终端查看结果，
 不会自动安装更新。网易云登录与个人音乐数据留在本机，不进入 Git。
 网课常亮独立控制，默认每次登录关闭；正常空闲 5 分钟锁屏、10 分钟熄屏，不自动挂起。

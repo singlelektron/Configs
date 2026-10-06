@@ -164,8 +164,15 @@ class Desktop:
             profile = labels[choice]
         if profile not in PROFILES:
             raise DesktopError("Unknown bar profile")
+        previous = self.settings()["bar_profile"]
         self.save(bar_profile=profile)
-        self.restart("waybar")
+        try:
+            # The panel runs this in a worker. Wait for the restart job before
+            # reporting success; --no-block only acknowledges a queued request.
+            systemctl("try-restart", unit("waybar"), timeout=15)
+        except (DesktopError, OSError, subprocess.SubprocessError):
+            self.save(bar_profile=previous)
+            raise
 
     def waybar(self):
         profile = self.settings()["bar_profile"]
@@ -446,7 +453,7 @@ def main():
         else:
             getattr(desktop, args.action.replace("-", "_"))()
         return 0
-    except (DesktopError, OSError, ValueError, ImportError) as error:
+    except (DesktopError, OSError, ValueError, ImportError, subprocess.SubprocessError) as error:
         print(f"Desktop: {error}", file=sys.stderr)
         if os.environ.get("NIRI_SOCKET") and shutil.which("notify-send"):
             command(["notify-send", "Desktop action failed", str(error)], check=False)

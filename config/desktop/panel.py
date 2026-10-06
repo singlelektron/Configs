@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """GTK control center; desktopctl owns persistent state and session checks."""
 import argparse
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -14,9 +15,9 @@ from gi.repository import Gdk, Gio, GLib, Gtk, Pango
 
 
 PROFILES = (
-    ("balanced", "Balanced", "Workspaces, music and system status"),
-    ("focus", "Focus", "Compact status; hide the date and update count"),
-    ("performance", "Performance", "Show seconds in the clock"),
+    ("balanced", "Balanced", "Date, network and update count"),
+    ("focus", "Focus", "Music and essentials; fewer status icons"),
+    ("performance", "Performance", "Seconds and output volume at a glance"),
 )
 
 
@@ -84,6 +85,7 @@ class ControlCenter(Gtk.Application):
         self.window.set_default_size(356, 580)
         self.window.set_decorated(False)
         self.window.add_css_class("desktop-panel")
+        self.window.add_css_class("control-center")
         self.window.connect("close-request", self.close_requested)
         keys = Gtk.EventControllerKey()
         keys.connect("key-pressed", self.key_pressed)
@@ -109,7 +111,7 @@ class ControlCenter(Gtk.Application):
         scroll = Gtk.ScrolledWindow()
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scroll.set_vexpand(True)
-        self.controls = box(True, 12)
+        self.controls = box(True, 8)
         self.controls.add_css_class("panel-content")
         scroll.set_child(self.controls)
         root.append(scroll)
@@ -159,7 +161,7 @@ class ControlCenter(Gtk.Application):
             child.append(icon("go-next-symbolic", 13))
             button.set_child(child)
             button.connect("clicked", lambda _button, app=application, name=title:
-                           self.launch(["niri", "msg", "action", "spawn", "--", app], name))
+                           self.launch_settings(app, name))
             devices.append(button)
 
         awake = box(spacing=12)
@@ -205,6 +207,8 @@ class ControlCenter(Gtk.Application):
             profile_row.append(button)
         profile_row.set_homogeneous(True)
         profiles.append(profile_row)
+        self.profile_hint = label("", "profile-hint", wrap=True)
+        profiles.append(self.profile_hint)
 
         wallpaper = box(spacing=8)
         wallpaper.add_css_class("setting-row")
@@ -309,6 +313,8 @@ class ControlCenter(Gtk.Application):
             self.syncing = True
             for name, button in self.profile_buttons.items():
                 button.set_active(settings["bar_profile"] == name)
+            self.profile_hint.set_label(next(description for name, _title, description in PROFILES
+                                             if name == settings["bar_profile"]))
             self.awake.set_active(enabled)
             self.awake.set_state(enabled)
             wallpaper = settings["wallpaper"]
@@ -560,6 +566,16 @@ class ControlCenter(Gtk.Application):
             if result.returncode:
                 raise RuntimeError(result.stderr.strip() or f"Could not open {description.lower()}")
         self.perform(action, f"Opening {description.lower()}…", close=True)
+
+    def launch_settings(self, application, description):
+        """Keep the dark settings palette local to these three GTK applications."""
+        if application not in ("pavucontrol", "nm-connection-editor", "blueman-manager"):
+            raise ValueError("Unsupported settings application")
+        theme_data = Path(__file__).with_name("settings-theme").resolve()
+        data_dirs = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+        argv = ["niri", "msg", "action", "spawn", "--", "env",
+                "GTK_THEME=DotfilesSettings", f"XDG_DATA_DIRS={theme_data}:{data_dirs}", application]
+        self.launch(argv, description)
 
     def close_requested(self, _window):
         if self.busy or self.volume_source is not None:

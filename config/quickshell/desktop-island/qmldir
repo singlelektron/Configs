@@ -6,3 +6,4 @@ InkLabel 1.0 InkLabel.qml
 Icon 1.0 Icon.qml
 IconButton 1.0 IconButton.qml
 Art 1.0 Art.qml
+VolumeCard 1.0 VolumeCard.qml

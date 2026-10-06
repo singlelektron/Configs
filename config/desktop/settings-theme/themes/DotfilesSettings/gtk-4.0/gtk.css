@@ -1,0 +1,12 @@
+/* Inherit GTK's maintained widgets; override only the settings palette. */
+@import url("resource:///org/gtk/libgtk/theme/Default/Default-dark.css");
+@import url("../palette.css");
+
+/* GTK4 places editable text in an extra CSS node. */
+entry > text > selection, entry > text > selection:focus-within,
+spinbutton > text > selection, spinbutton > text > selection:focus-within,
+textview > text > selection, textview > text > selection:focus-within {
+    background-color: #56384f;
+    color: #f2c3dc;
+}
+entry:focus-within, spinbutton:focus-within { outline-color: #e6a6c7; border-color: #e6a6c7; }

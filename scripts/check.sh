@@ -9,6 +9,7 @@ if command -v node >/dev/null 2>&1; then
 else
   echo 'SKIP Quickshell state helper tests: Node.js is not installed.'
 fi
+python3 config/quickshell/tests/run_volume_ui.py
 bash -n scripts/install-tools.sh scripts/check.sh
 sh -n config/desktop/terminal-bin/xdg-terminal-exec
 
@@ -106,7 +107,8 @@ if [[ "$(uname -s)" == Linux ]] && command -v niri >/dev/null 2>&1; then
   else
     echo 'SKIP Fuzzel parser check: fuzzel is not installed.'
   fi
-  python3 - "$test_root/.config/waybar/style.css" "$test_root/.config/gtklock/style.css" <<'PY'
+  python3 - "$test_root/.config/waybar/style.css" "$test_root/.config/gtklock/style.css" \
+    "$test_root/.config/niri/settings-theme/themes/DotfilesSettings/gtk-3.0/gtk.css" <<'PY'
 import sys
 try:
     import gi
@@ -122,10 +124,11 @@ for path in sys.argv[1:]:
     provider.connect("parsing-error", lambda _, section, error: errors.append(str(error)))
     provider.load_from_path(path)
     assert not errors, path + ": " + "; ".join(errors)
-print("Waybar and GTKLock GTK 3 CSS parsing: PASS")
+print("Waybar, GTKLock and settings GTK 3 CSS parsing: PASS")
 PY
 
-  python3 - "$test_root/.config/niri/panel.css" <<'PY'
+  python3 - "$test_root/.config/niri/panel.css" \
+    "$test_root/.config/niri/settings-theme/themes/DotfilesSettings/gtk-4.0/gtk.css" <<'PY'
 import sys
 try:
     import gi
@@ -135,12 +138,13 @@ except (ImportError, ValueError):
     print("SKIP control panel CSS parsing: Python GObject / GTK 4 is not installed.")
     sys.exit(0)
 
-errors = []
-provider = Gtk.CssProvider()
-provider.connect("parsing-error", lambda _, section, error: errors.append(str(error)))
-provider.load_from_path(sys.argv[1])
-assert not errors, "Control panel CSS errors: " + "; ".join(errors)
-print("Control panel GTK 4 CSS parsing: PASS")
+for path in sys.argv[1:]:
+    errors = []
+    provider = Gtk.CssProvider()
+    provider.connect("parsing-error", lambda _, section, error: errors.append(str(error)))
+    provider.load_from_path(path)
+    assert not errors, path + ": " + "; ".join(errors)
+print("Control panel and settings GTK 4 CSS parsing: PASS")
 PY
 
   if command -v systemd-analyze >/dev/null 2>&1; then

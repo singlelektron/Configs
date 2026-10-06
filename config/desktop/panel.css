@@ -120,3 +120,39 @@ window.desktop-panel {
 .desktop-panel .launcher-open-icon { color: #765f6c; }
 .desktop-panel row.application-card:selected .launcher-open-icon { color: #a34264; }
 .desktop-panel .launcher-empty { color: #765f6c; padding: 44px 10px; }
+
+/* Controls match the top bar; the application picker retains its light paper. */
+window.desktop-panel.control-center { background: #211c29; color: #eee5ef; border-color: #3c303f; }
+.desktop-panel.control-center .section-label,
+.desktop-panel.control-center .section-detail,
+.desktop-panel.control-center .card-detail,
+.desktop-panel.control-center .system-metric,
+.desktop-panel.control-center .status,
+.desktop-panel.control-center .key-hint { color: #b7a6b9; }
+.desktop-panel.control-center .profile-hint { color: #b7a6b9; font-size: 10px; }
+.desktop-panel.control-center button { color: #eee5ef; }
+.desktop-panel.control-center button:hover { background: #382d3e; }
+.desktop-panel.control-center button:active { background: #51384c; }
+.desktop-panel.control-center button:disabled { color: #8f7d94; }
+.desktop-panel.control-center button:focus-visible,
+.desktop-panel.control-center switch:focus-visible,
+.desktop-panel.control-center scale:focus-visible { outline-color: #e6a6c7; }
+.desktop-panel.control-center .profile-segments { background: #1b1722; }
+.desktop-panel.control-center button.profile-card:checked { background: #56384f; color: #f2c3dc; }
+.desktop-panel.control-center .setting-row,
+.desktop-panel.control-center button.device-card,
+.desktop-panel.control-center .panel-footer { border-color: #3c303f; }
+.desktop-panel.control-center .setting-row > image,
+.desktop-panel.control-center button.device-card image { color: #b7a6b9; }
+.desktop-panel.control-center switch,
+.desktop-panel.control-center scale trough { background: #594557; }
+.desktop-panel.control-center switch:checked,
+.desktop-panel.control-center scale highlight,
+.desktop-panel.control-center scale slider { background: #e6a6c7; }
+.desktop-panel.control-center scale slider { border-color: #211c29; }
+.desktop-panel.control-center switch slider { background: #eee5ef; }
+.desktop-panel.control-center switch:checked slider { background: #211c29; }
+.desktop-panel.control-center button.quiet-button,
+.desktop-panel.control-center spinner { color: #e6a6c7; }
+.desktop-panel.control-center .status.error { color: #ffadc0; }
+.desktop-panel.control-center scrollbar slider { background: #65536e; }

@@ -66,7 +66,18 @@ class DesktopTests(unittest.TestCase):
         for profile in desktopctl.PROFILES:
             self.desktop.bar(profile)
             self.assertEqual(desktopctl.Desktop().settings()["bar_profile"], profile)
-        self.assertEqual(self.commands, [("--no-block", "try-restart", "dotfiles-niri-waybar.service")] * 3)
+        self.assertEqual(self.commands, [("try-restart", "dotfiles-niri-waybar.service")] * 3)
+
+    def test_profile_restart_failure_restores_previous_choice(self):
+        self.desktop.save(bar_profile="focus", wallpaper="/pictures/keep.png")
+        for error in (desktopctl.DesktopError("restart failed"), subprocess.TimeoutExpired("systemctl", 15)):
+            with self.subTest(error=type(error).__name__), mock.patch.object(
+                    desktopctl, "systemctl", side_effect=error) as restart:
+                with self.assertRaises(type(error)):
+                    self.desktop.bar("performance")
+                restart.assert_called_once_with("try-restart", "dotfiles-niri-waybar.service", timeout=15)
+                self.assertEqual(self.desktop.settings(), {
+                    "bar_profile": "focus", "wallpaper": "/pictures/keep.png"})
 
     def test_invalid_profile_is_rejected_without_writes(self):
         with self.assertRaises(desktopctl.DesktopError):
@@ -260,7 +271,7 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(self.desktop.settings()["bar_profile"], "focus")
         mutations = [c for c in self.commands if c[0] != "show"]
         self.assertEqual(mutations, [("stop", "dotfiles-niri-idle.service"),
-                                    ("--no-block", "try-restart", "dotfiles-niri-waybar.service"),
+                                    ("try-restart", "dotfiles-niri-waybar.service"),
                                     ("start", "dotfiles-niri-idle.service")])
 
     def test_failed_idle_stop_does_not_claim_lecture_is_active(self):

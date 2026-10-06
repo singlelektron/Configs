@@ -1,0 +1,82 @@
+/* Only selected settings processes load this theme through GTK_THEME. */
+@define-color theme_bg_color #211c29;
+@define-color theme_fg_color #eee5ef;
+@define-color theme_base_color #211c29;
+@define-color theme_text_color #eee5ef;
+@define-color theme_selected_bg_color #56384f;
+@define-color theme_selected_fg_color #f2c3dc;
+@define-color borders #3c303f;
+@define-color warning_color #e8c495;
+@define-color error_color #ffadc0;
+@define-color success_color #b2c8b4;
+@define-color accent_color #e6a6c7;
+
+window, .background { background-color: #211c29; color: #eee5ef; }
+headerbar, toolbar, menubar, .titlebar {
+    background-color: #211c29;
+    background-image: none;
+    color: #eee5ef;
+    border-color: #3c303f;
+    box-shadow: none;
+}
+notebook > header, stacksidebar, .sidebar { background-color: #1b1722; color: #b7a6b9; }
+.view, textview text, treeview, iconview, list, row { background-color: #211c29; color: #eee5ef; }
+row:hover { background-color: #2c2434; }
+.view:selected, row:selected, treeview.view:selected, iconview:selected,
+entry selection, textview text selection { background-color: #56384f; color: #f2c3dc; }
+button {
+    background-color: #2c2434;
+    background-image: none;
+    color: #eee5ef;
+    border-color: #3c303f;
+    border-radius: 6px;
+    box-shadow: none;
+    text-shadow: none;
+}
+button:hover { background-color: #382d3e; border-color: #65536e; }
+button:active, button:checked { background-color: #56384f; color: #f2c3dc; }
+button:disabled, entry:disabled { color: #8f7d94; }
+button.suggested-action { background-color: #e6a6c7; color: #211c29; border-color: #e6a6c7; }
+button.destructive-action { background-color: #773c50; color: #ffe5ef; border-color: #995366; }
+button:focus, entry:focus, spinbutton:focus { outline-color: #e6a6c7; border-color: #e6a6c7; }
+entry, spinbutton, spinbutton text, searchentry {
+    background-color: #1b1722;
+    color: #eee5ef;
+    border-color: #65536e;
+    border-radius: 6px;
+    box-shadow: none;
+}
+popover, popover > contents, menu, .menu { background-color: #2c2434; color: #eee5ef; border-color: #3c303f; }
+menuitem:hover, modelbutton:hover { background-color: #56384f; color: #f2c3dc; }
+notebook > header tabs tab { color: #b7a6b9; border-color: #3c303f; }
+notebook > header tabs tab:checked { background-color: #382d3e; color: #f2c3dc; box-shadow: inset 0 -2px #e6a6c7; }
+separator { background-color: #3c303f; }
+scale trough, progressbar trough { background-color: #594557; border-color: #594557; }
+scale highlight, scale > trough > highlight,
+progressbar progress, progressbar > trough > progress { background-color: #e6a6c7; border-color: #e6a6c7; }
+scale slider, scale > trough > slider,
+scale > trough > slider:hover, scale > trough > slider:active {
+    background-color: #e6a6c7;
+    background-image: none;
+    border-color: #211c29;
+    box-shadow: none;
+}
+switch { background-color: #594557; border-color: #594557; }
+switch:checked { background-color: #e6a6c7; border-color: #e6a6c7; }
+switch slider { background-color: #eee5ef; background-image: none; border-color: #eee5ef; box-shadow: none; }
+check:checked, radio:checked,
+check:checked:hover, radio:checked:hover,
+check:checked:active, radio:checked:active {
+    background-color: #e6a6c7;
+    background-image: none;
+    color: #211c29;
+    border-color: #e6a6c7;
+    box-shadow: none;
+}
+scrollbar slider { background-color: #65536e; }
+scrollbar slider:hover { background-color: #b7a6b9; }
+tooltip, tooltip.background { background-color: #2c2434; color: #eee5ef; border-color: #65536e; }
+label:link, button.link { color: #e6a6c7; }
+.dim-label { color: #b7a6b9; opacity: 1; }
+.error { color: #ffadc0; }
+.warning { color: #e8c495; }

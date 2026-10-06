@@ -27,10 +27,10 @@ Rectangle {
         background: Rectangle { color: summary.hovered ? "#2c2434" : "transparent"; radius: 21 }
         contentItem: Item {
             RowLayout {
-                anchors { fill: parent; leftMargin: 7; rightMargin: 12 }
+                anchors { fill: parent; leftMargin: 12; rightMargin: 12 }
                 spacing: 9
                 visible: !card.volumeFeedback
-                Art { source: DesktopState.art; Layout.preferredWidth: 30; Layout.preferredHeight: 30; radius: 8 }
+                Art { source: DesktopState.art; Layout.preferredWidth: 26; Layout.preferredHeight: 26; Layout.alignment: Qt.AlignVCenter; radius: 7 }
                 ColumnLayout {
                     spacing: 0
                     Layout.fillWidth: true
