@@ -4,12 +4,12 @@ gui:
   showRandomTip: false
   nerdFontsVersion: "3"
   theme:
-    activeBorderColor: ["#f2a5c7", bold]
-    inactiveBorderColor: ["#574254"]
-    optionsTextColor: ["#a7b9ed"]
-    selectedLineBgColor: ["#3b2c3b"]
-    defaultFgColor: ["#ede5ec"]
-    unstagedChangesColor: ["#f08091"]
+    activeBorderColor: ["#e6a6c7", bold]
+    inactiveBorderColor: ["#65536e"]
+    optionsTextColor: ["#b7c3eb"]
+    selectedLineBgColor: ["#51384c"]
+    defaultFgColor: ["#eee5ef"]
+    unstagedChangesColor: ["#f095a8"]
 git:
   autoFetch: false
   autoForwardBranches: none

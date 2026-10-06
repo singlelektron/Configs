@@ -175,6 +175,39 @@ class DesktopTests(unittest.TestCase):
         self.assertEqual(target.read_bytes(), b"old cached content")
         self.assertEqual(list(self.desktop.data.iterdir()), [target])
 
+    def test_new_default_retains_previous_wallpaper(self):
+        payload = self.image().read_bytes()
+        self.download_metadata(payload)
+        self.desktop.data.mkdir(parents=True)
+        (self.desktop.data / "default.jpg").write_bytes(b"previous wallpaper")
+        with mock.patch.object(desktopctl.urllib.request, "urlopen", return_value=io.BytesIO(payload)):
+            self.desktop.fetch_wallpaper()
+        self.assertEqual(next(self.desktop.data.glob("previous-*.image")).read_bytes(), b"previous wallpaper")
+
+    def test_lock_passes_wallpaper_as_argument_to_native_locker(self):
+        image = self.image()
+        self.desktop.save(wallpaper=str(image))
+        config = self.desktop.config / "gtklock/config.ini"
+        config.parent.mkdir(parents=True)
+        config.write_text("[main]\n")
+        with mock.patch.object(desktopctl.shutil, "which", return_value="/usr/bin/gtklock"), \
+                mock.patch.object(desktopctl.os, "execvp") as execute, \
+                mock.patch.dict(desktopctl.os.environ, {"GDK_BACKEND": "x11"}):
+            self.desktop.lock()
+            self.assertEqual(desktopctl.os.environ["GDK_BACKEND"], "wayland")
+        self.assertEqual(execute.call_args.args[0], "gtklock")
+        self.assertEqual(execute.call_args.args[1][-2:], ["--background", str(image)])
+
+    def test_standard_locker_fallback_and_bar_recovery(self):
+        with mock.patch.object(desktopctl.shutil, "which", return_value=None), \
+                mock.patch.object(desktopctl.os, "execvp") as execute:
+            self.desktop.lock()
+        self.assertEqual(execute.call_args.args[0], "swaylock")
+        with mock.patch.object(desktopctl.shutil, "which", return_value=None), \
+                mock.patch.object(self.desktop, "waybar") as fallback:
+            self.desktop.shell()
+        fallback.assert_called_once()
+
     def test_hardware_modules_only_appear_on_supported_hardware(self):
         sysfs = self.root / "sysfs"
         modules = {"modules-right": ["clock", "battery", "backlight", "cpu"]}

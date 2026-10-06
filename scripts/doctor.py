@@ -15,7 +15,7 @@ from deploy import DeploymentError, entries_for, locations
 def check_desktop(config, missing):
     """Check the optional desktop without starting services or a compositor."""
     print("Niri desktop tools:")
-    for name in ("niri", "waybar", "fuzzel", "mako", "swaybg", "swayidle", "swaylock",
+    for name in ("niri", "quickshell", "checkupdates", "waybar", "fuzzel", "mako", "swaybg", "swayidle", "swaylock", "gtklock",
                  "xwayland-satellite", "wpctl", "pactl", "brightnessctl", "playerctl",
                  "zenity", "blueman-manager", "pavucontrol", "nm-applet", "nmcli", "nm-connection-editor",
                  "jq", "xdg-open", "notify-send", "gnome-keyring-daemon", "nautilus",

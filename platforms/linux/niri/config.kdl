@@ -1,4 +1,4 @@
-// Rose Observatory · Niri 26.04+. Hardware belongs in dotfiles-local/niri.kdl.
+// Niri 26.04+. Hardware belongs in dotfiles-local/niri.kdl.
 // Mod is Super in a real session, Alt when testing in a nested window.
 input {
     keyboard {
@@ -25,20 +25,20 @@ layout {
         proportion 0.66667
         proportion 1.0
     }
-    background-color "#19151c"
+    background-color "#1b1722"
     focus-ring {
-        width 2
-        active-color "#f2a5c7"
-        inactive-color "#574254"
-        urgent-color "#e7c38c"
+        width 1
+        active-color "#d9abc6"
+        inactive-color "#65536e"
+        urgent-color "#e8c495"
     }
     border { off; }
     shadow {
         on
-        softness 16
-        spread 1
+        softness 18
+        spread 0
         offset x=0 y=3
-        color "#08060d70"
+        color "#21152638"
     }
 }
 
@@ -50,7 +50,7 @@ workspace "play"
 prefer-no-csd
 overview {
     zoom 0.4
-    backdrop-color "#19151c"
+    backdrop-color "#1b1722"
 }
 animations { slowdown 0.85; }
 cursor {
@@ -69,6 +69,7 @@ environment {
     LANGUAGE "en_US:en"
     XMODIFIERS "@im=fcitx"
     QT_IM_MODULES "wayland;fcitx;ibus"
+    QT_QPA_PLATFORMTHEME "gtk3"
 }
 
 // Helper starts services only within a real niri-session, never GNOME/nested niri.
@@ -110,10 +111,18 @@ window-rule {
     open-floating true
 }
 window-rule {
-    match app-id="^io\\.github\\.dotfiles\\.(DesktopPanel|AppLauncher)$"
+    match app-id="^io\\.github\\.dotfiles\\.DesktopPanel$"
     open-floating true
-    default-column-width { fixed 680; }
-    default-window-height { fixed 720; }
+    default-column-width { fixed 356; }
+    default-window-height { fixed 580; }
+    // Below the left status-bar entry. Coordinates are in logical pixels.
+    default-floating-position x=18 y=14 relative-to="top-left"
+}
+window-rule {
+    match app-id="^io\\.github\\.dotfiles\\.AppLauncher$"
+    open-floating true
+    default-column-width { fixed 480; }
+    default-window-height { fixed 560; }
 }
 
 binds {
@@ -203,9 +212,9 @@ binds {
     XF86AudioLowerVolume allow-when-locked=true { spawn "wpctl" "set-volume" "@DEFAULT_AUDIO_SINK@" "5%-"; }
     XF86AudioMute allow-when-locked=true { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SINK@" "toggle"; }
     XF86AudioMicMute allow-when-locked=true { spawn "wpctl" "set-mute" "@DEFAULT_AUDIO_SOURCE@" "toggle"; }
-    XF86AudioPlay allow-when-locked=true { spawn "playerctl" "play-pause"; }
-    XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
-    XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
+    XF86AudioPlay allow-when-locked=true { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" music play-pause"; }
+    XF86AudioNext allow-when-locked=true { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" music next"; }
+    XF86AudioPrev allow-when-locked=true { spawn-sh "python3 \"${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py\" music previous"; }
     XF86MonBrightnessUp allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "+5%"; }
     XF86MonBrightnessDown allow-when-locked=true { spawn "brightnessctl" "--class=backlight" "set" "5%-"; }
 }

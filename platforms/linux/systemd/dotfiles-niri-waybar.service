@@ -1,6 +1,6 @@
 # Started only by desktopctl session-start; deliberately not enable-able.
 [Unit]
-Description=Rose Observatory status bar
+Description=Pink dusk desktop music island
 PartOf=niri.service graphical-session.target
 After=niri.service graphical-session.target
 Requisite=niri.service graphical-session.target
@@ -8,7 +8,7 @@ Requisite=niri.service graphical-session.target
 [Service]
 Type=simple
 UnsetEnvironment=GDK_BACKEND
-ExecStart=/usr/bin/python3 "%E/niri/desktopctl.py" waybar
+ExecStart=/usr/bin/python3 "%E/niri/desktopctl.py" shell
 Restart=on-failure
 RestartSec=2
 Slice=session.slice

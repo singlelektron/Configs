@@ -1,9 +1,9 @@
 {
-  "name": "Anime Girl On Rooftop Dancing With Cat City Skyline",
-  "source": "https://hdqwalls.com/wallpaper/3840x2400/anime-girl-on-rooftop-dancing-with-cat-city-skyline",
-  "url": "https://images.hdqwalls.com/wallpapers/anime-girl-on-rooftop-dancing-with-cat-city-skyline-4g.jpg",
-  "width": 3840,
-  "height": 2160,
-  "sha256": "04ffa3354c1ba03ff7498d7537d9eb4091206feff82ae8f43bddacbb05fb4f7d",
-  "note": "User-selected C reference. Download for the local desktop only; third-party image is not redistributed in this repository."
+  "name": "Muted pink dusk silhouette (Catppuccin recolor)",
+  "source": "https://github.com/sauravshinde007/catppuccin-anime-wallpapers/blob/4020d8d40328e8c1e8ad6fc2fb0bd58d163b2ca5/scenic/wallhaven-je5r8y_1920x1200_smoothed_catppuccin.png",
+  "url": "https://raw.githubusercontent.com/sauravshinde007/catppuccin-anime-wallpapers/4020d8d40328e8c1e8ad6fc2fb0bd58d163b2ca5/scenic/wallhaven-je5r8y_1920x1200_smoothed_catppuccin.png",
+  "width": 1920,
+  "height": 1200,
+  "sha256": "5e3f07705523a30d3d481920a1915a9924692a0741cf115c1a5c98259e5842c0",
+  "note": "Last selected design preview: haze. Collection/recolor source recorded; original artist unverified. This 1920x1200 image is cropped/upscaled on a 4K display, not native 4K. Local download only; not redistributed in Git."
 }

@@ -1,0 +1,53 @@
+/* gtklock 4.0 default layout. Authentication and idle hiding remain native. */
+window {
+    background-color: #1b1722;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+    color: #eee5ef;
+    font-family: "Noto Sans", "Cantarell", sans-serif;
+}
+window #clock-label {
+    color: #f5dcea;
+    font-size: 72px;
+    font-weight: 300;
+    text-shadow: 0 2px 14px rgba(27, 23, 34, 0.7);
+}
+window.focused:not(.hidden) #clock-label { font-size: 44px; }
+window #date-label,
+window.focused:not(.hidden) #date-label {
+    color: #eee5ef;
+    font-size: 14px;
+    font-weight: 400;
+    text-shadow: 0 1px 8px rgba(27, 23, 34, 0.9);
+}
+#body-grid {
+    background: rgba(27, 23, 34, 0.88);
+    border: 1px solid rgba(217, 171, 198, 0.45);
+    border-radius: 10px;
+    padding: 18px;
+}
+#input-label { color: #eee5ef; font-size: 12px; }
+#input-field {
+    color: #eee5ef;
+    background: #231d2c;
+    border: 1px solid #65536e;
+    border-radius: 6px;
+    box-shadow: none;
+    padding: 8px 10px;
+}
+#input-field:focus { border-color: #e6a6c7; }
+#input-field selection { background: #51384c; color: #eee5ef; }
+#unlock-button {
+    color: #1b1722;
+    background: #e6a6c7;
+    border: none;
+    border-radius: 6px;
+    box-shadow: none;
+    text-shadow: none;
+    padding: 8px 12px;
+}
+#unlock-button:hover { background: #f0c4dc; }
+#unlock-button:focus { outline: 2px solid #eee5ef; outline-offset: 2px; }
+#error-label { color: #ffadc0; font-size: 12px; }
+#warning-label { color: #e8c495; font-size: 12px; }

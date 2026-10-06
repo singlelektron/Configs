@@ -1,27 +1,27 @@
 local M = {}
 
--- Shared with Kitty, LazyGit and the desktop; rose marks active controls while
+-- Shared with Kitty, LazyGit and the desktop; soft pink marks active controls while
 -- diagnostic and ANSI colors retain their distinct meanings.
 local colors = {
-  background = "#19151c",
-  surface = "#241d29",
-  selection = "#3b2c3b",
-  border = "#574254",
-  foreground = "#ede5ec",
-  muted = "#b3a2b1",
-  accent = "#f2a5c7",
-  cyan = "#9bcbd3",
-  blue = "#a7b9ed",
-  green = "#a6c7a0",
-  yellow = "#e7c38c",
-  red = "#f08091",
+  background = "#1b1722",
+  surface = "#231d2c",
+  selection = "#51384c",
+  border = "#65536e",
+  foreground = "#eee5ef",
+  muted = "#c1b1c7",
+  accent = "#e6a6c7",
+  cyan = "#a3ccde",
+  blue = "#b7c3eb",
+  green = "#b2c8b4",
+  yellow = "#e8c495",
+  red = "#f095a8",
 }
 
 function M.apply_palette()
   -- Neovim terminal jobs (including LazyGit) use the same ANSI palette as Kitty.
   local terminal = {
     colors.surface, colors.red, colors.green, colors.yellow,
-    colors.blue, "#c9adeb", colors.cyan, colors.foreground,
+    colors.blue, "#cbb6f1", colors.cyan, colors.foreground,
     colors.muted, "#ff9cad", "#c0dab9", "#f4d7a7",
     "#c2cdf5", "#e0c8f8", "#b8dfe4", "#fff5fb",
   }

@@ -3,12 +3,12 @@
 macOS 与 Arch Linux 共用的 Kitty / Neovim 配置，以及可选的 Arch Niri 桌面。
 支持鼠标和原生 Vim 操作，部署可回滚。
 
-- Kitty：暗玫瑰底色、柔粉重点提示、94% 不透明度、JetBrains Mono 和简洁标签栏。
+- Kitty：深紫灰底色、粉紫重点提示、86% 不透明度、JetBrains Mono 和简洁标签栏。
 - Neovim ≥ 0.11.3：左侧文件树、可点击文件标签与 Git 入口、原生 LSP / 补全；8 个功能插件加 lazy.nvim。
 - Git：文件树与状态栏显示改动；LazyGit 提供鼠标友好的管理界面，保留 Fugitive 和命令行。
 - Rust：rust-analyzer；Python：basedpyright + Ruff；LaTeX：texlab + VimTeX；Markdown：实时浏览器预览与 KaTeX 数学公式，可选 Marksman。
 - AI agent 在独立终端工作；Neovim 检查外部文件变化，保留有未保存修改时的冲突提示。
-- Niri：二次元壁纸、四个工作区、三档信息栏、中文输入、网课常亮与独立锁屏；[完整使用说明](docs/niri.md)。
+- Niri：柔和粉紫二次元壁纸、深色顶部音乐岛、浅粉控制中心、四个工作区、Arch 更新提示、中文输入、网课常亮与独立锁屏；[完整使用说明](docs/niri.md)。
 - 本地差异放在仓库外，旧配置和 Neovim 插件数据保留。不管理 shell、SSH、Git 身份或默认登录会话。
 
 ## 新机器恢复
@@ -33,7 +33,7 @@ nvim
 python3 scripts/doctor.py
 ```
 
-在 Niri 功能分支尚未合并时，clone 命令加 `--branch codex/niri-rose-desktop`。
+在桌面功能分支尚未合并时，clone 命令加 `--branch codex/desktop-island-music`。
 
 软件安装与配置部署分开：Homebrew 不主动升级已装工具；Arch 使用 `pacman -Syu --needed`，
 会执行完整系统升级以避免部分升级。Niri 仅在显式指定 `--desktop niri` 时安装。
@@ -161,7 +161,8 @@ python3 scripts/deploy.py --restore /absolute/path/to/backup-id --apply
 
 ## 可选 Arch Niri 桌面
 
-完整桌面使用暗玫瑰界面与 4K 二次元壁纸，适合文档、代码、网课笔记和游戏。
+完整桌面使用浅樱粉面板、深色顶部胶囊与深紫灰半透明终端，搭配低饱和粉紫二次元壁纸，
+适合文档、代码、网课笔记和游戏。当前默认壁纸为 1920×1200，在 4K 屏幕上裁剪或放大。
 软件与配置仍分开部署；首次安装与切换方式见 [Niri 指南](docs/niri.md)，
 日常操作与窗口上下排列见 [独立快捷键文档](docs/niri-keybindings.md)。
 
@@ -172,17 +173,29 @@ python3 scripts/deploy.py --desktop niri
 python3 scripts/deploy.py --desktop niri --apply
 python3 "${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py" wallpaper fetch
 python3 scripts/doctor.py --desktop niri
+
+# 网易云 GTK4 为独立安装；先查看计划，再安装。
+python3 scripts/install-music.py
+python3 scripts/install-music.py --apply
+
+# 系统应用浅色偏好会影响当前用户的 GNOME / Niri 应用，原值单独备份。
+python3 scripts/desktop-appearance.py
+python3 scripts/desktop-appearance.py --apply
 ```
 
 默认图片从记录的 HTTPS 来源获取并校验 SHA-256，保存在本机数据目录；仓库不包含图片。
-首次下载失败仍能以纯色背景启动，之后可重试。`Super-Shift-Space` 打开英文 GTK4 桌面控制面板，Esc 关闭；
-可更换壁纸、恢复默认图和切换 Balanced / Focus / Performance 信息栏。更换壁纸不会修改软件配色。
-`Super+D` 打开相同设计的 GTK4 应用选择窗口，支持搜索、↑↓ / Enter 和鼠标点击，包含原生与 Flatpak 应用。
+首次下载失败仍能以纯色背景启动，之后可重试。`Super+Shift+Space` 或左上入口打开浅粉 GTK4 控制中心，
+位于状态栏左侧下方，Esc 关闭；可调整音量、常亮和勿扰、更换壁纸、切换信息密度，查看 CPU、RAM 和可用温度。
+更换壁纸不会修改软件配色。`Super+D` 打开居中的 GTK4 应用选择窗口，支持搜索、↑↓ / Enter 和鼠标点击，
+包含原生与 Flatpak 应用。默认 Quickshell 的 Focus 隐藏日期与更新数量，Performance 给时钟增加秒显示。
+中央音乐岛可展开播放控制与进度，优先控制网易云 GTK4；右侧更新入口检查 Arch 官方仓库并可在终端查看结果，
+不会自动安装更新。网易云登录与个人音乐数据留在本机，不进入 Git。
 网课常亮独立控制，默认每次登录关闭；正常空闲 5 分钟锁屏、10 分钟熄屏，不自动挂起。
 
 保留 GNOME 与登录管理器，不自动启用、切换或更改默认会话。保存工作后自行在登录页选择
 Niri；真实会话需要验证中文输入、字体、剪贴板、屏幕共享、锁屏和游戏。
 输出名称、缩放及 VRR 放在仓库外的 `dotfiles-local/niri.kdl`，换机器重新核对。
+本次未进行 macOS 图形验收；共享终端配色仍需在 macOS 实机确认透明度、字体和剪贴板。
 
 ## 可选写作工具
 
@@ -212,7 +225,9 @@ config/kitty/         共享终端配置
 config/nvim/          共享编辑器配置和插件锁
 config/lazygit/       共享 Git 管理界面配置（不包含历史和状态）
 config/desktop/       桌面控制工具、默认壁纸来源与校验值
-config/waybar/ 等      桌面组件的暗玫瑰外观与信息布局
+config/quickshell/    深色顶部胶囊、音乐岛和更新面板
+config/gtk-3.0/ 等    浅色系统应用偏好、工具面板与锁屏外观
+config/waybar/        兼容后备状态栏
 platforms/macos/      macOS 差异
 platforms/linux/      Linux 差异、Niri 入口与会话绑定的用户服务
 packages/             平台软件清单、Python CLI 版本

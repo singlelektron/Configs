@@ -4,6 +4,11 @@ set -euo pipefail
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_dir"
 python3 -m unittest discover -s tests -p 'test_*.py' -v
+if command -v node >/dev/null 2>&1; then
+  node --test config/quickshell/tests/logic.test.cjs
+else
+  echo 'SKIP Quickshell state helper tests: Node.js is not installed.'
+fi
 bash -n scripts/install-tools.sh scripts/check.sh
 sh -n config/desktop/terminal-bin/xdg-terminal-exec
 
@@ -30,9 +35,9 @@ bad = []
 options = load_config(os.environ["DOTFILES_KITTY_TEST_CONFIG"], accumulate_bad_lines=bad)
 assert not bad, bad
 assert options.font_size == 17.0, "Local override did not load"
-assert options.background_opacity == 0.94
+assert options.background_opacity == 0.86
 assert options.dynamic_background_opacity
-assert options.background == type(options.background)(25, 21, 28)
+assert options.background == type(options.background)(27, 23, 34)
 assert os.path.expanduser("~/.local/bin") in options.env["PATH"].split(":")
 assert os.path.expanduser("~/.cargo/bin") in options.env["PATH"].split(":")
 if sys.platform == "darwin":
@@ -51,6 +56,15 @@ else
 fi
 
 if [[ "$(uname -s)" == Linux ]] && command -v niri >/dev/null 2>&1; then
+  if [[ -x /usr/lib/qt6/bin/qmllint ]] && command -v quickshell >/dev/null 2>&1; then
+    # Quickshell's shipped qtypes omit two native metatypes; runtime tests cover them.
+    /usr/lib/qt6/bin/qmllint -I /usr/lib/qt6/qml -W 0 \
+      --signal-handler-parameters info --uncreatable-type info \
+      config/quickshell/desktop-island/*.qml
+    echo 'Quickshell QML static analysis: PASS'
+  else
+    echo 'SKIP QML static analysis: Quickshell or qmllint is not installed.'
+  fi
   python3 scripts/deploy.py --home "$test_root" --desktop niri --apply
 
   check_niri_config() {
@@ -92,7 +106,7 @@ if [[ "$(uname -s)" == Linux ]] && command -v niri >/dev/null 2>&1; then
   else
     echo 'SKIP Fuzzel parser check: fuzzel is not installed.'
   fi
-  python3 - "$test_root/.config/waybar/style.css" <<'PY'
+  python3 - "$test_root/.config/waybar/style.css" "$test_root/.config/gtklock/style.css" <<'PY'
 import sys
 try:
     import gi
@@ -102,12 +116,13 @@ except (ImportError, ValueError):
     print("SKIP Waybar CSS parsing: Python GObject / GTK 3 is not installed.")
     sys.exit(0)
 
-errors = []
-provider = Gtk.CssProvider()
-provider.connect("parsing-error", lambda _, section, error: errors.append(str(error)))
-provider.load_from_path(sys.argv[1])
-assert not errors, "Waybar CSS errors: " + "; ".join(errors)
-print("Waybar GTK CSS parsing: PASS")
+for path in sys.argv[1:]:
+    errors = []
+    provider = Gtk.CssProvider()
+    provider.connect("parsing-error", lambda _, section, error: errors.append(str(error)))
+    provider.load_from_path(path)
+    assert not errors, path + ": " + "; ".join(errors)
+print("Waybar and GTKLock GTK 3 CSS parsing: PASS")
 PY
 
   python3 - "$test_root/.config/niri/panel.css" <<'PY'

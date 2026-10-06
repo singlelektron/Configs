@@ -16,7 +16,7 @@ import tempfile
 import urllib.request
 
 PROFILES = ("balanced", "focus", "performance")
-BACKGROUND = "#19151c"
+BACKGROUND = "#211c29"
 PREFIX = "dotfiles-niri-"
 MAX_IMAGE_BYTES = 64 * 1024 * 1024
 
@@ -163,7 +163,7 @@ class Desktop:
                 return
             profile = labels[choice]
         if profile not in PROFILES:
-            raise DesktopError("Unknown Waybar profile")
+            raise DesktopError("Unknown bar profile")
         self.save(bar_profile=profile)
         self.restart("waybar")
 
@@ -175,6 +175,18 @@ class Desktop:
         atomic_write(destination, json.dumps(value, ensure_ascii=False))
         os.execvp("waybar", ["waybar", "--config", str(destination),
                             "--style", str(self.config / "waybar/style.css")])
+
+    def shell(self):
+        """Retain the old bar as an explicit recovery option without changing sessions."""
+        if os.environ.get("DOTFILES_BAR_BACKEND") == "waybar" or not shutil.which("quickshell"):
+            self.waybar()
+            return
+        os.environ["DOTFILES_BAR_PROFILE"] = self.settings()["bar_profile"]
+        os.execvp("quickshell", ["quickshell", "--path",
+                  str(self.config / "quickshell/desktop-island/shell.qml")])
+
+    def music(self, action="open"):
+        self.interface_module("music").run(self, action)
 
     @staticmethod
     def filter_hardware(value, sysfs=Path("/sys/class")):
@@ -214,6 +226,11 @@ class Desktop:
                 raise DesktopError("Wallpaper checksum changed; existing cache was preserved")
             if image_info(Path(temporary)) != (metadata["width"], metadata["height"]):
                 raise DesktopError("Unexpected wallpaper dimensions")
+            # Changing the curated default must not discard the previous image.
+            if target.is_file():
+                previous = self.data / ("previous-" + hashlib.sha256(target.read_bytes()).hexdigest()[:16] + ".image")
+                if not previous.exists():
+                    shutil.copy2(target, previous)
             os.replace(temporary, target)
             print(f"Default wallpaper ready: {metadata['width']}x{metadata['height']}")
         finally:
@@ -307,7 +324,20 @@ class Desktop:
 
     def lock(self):
         self.require_session()
-        os.execvp("swaylock", ["swaylock", "--daemonize", "--config", str(self.config / "swaylock/config")])
+        wallpaper = self.selected_wallpaper()
+        if shutil.which("gtklock") and (self.config / "gtklock/config.ini").is_file():
+            args = ["gtklock", "--daemonize", "--config", str(self.config / "gtklock/config.ini"),
+                    "--style", str(self.config / "gtklock/style.css")]
+            if wallpaper:
+                args.extend(["--background", str(wallpaper)])
+            # A terminal may carry GDK_BACKEND=x11; the locker needs Wayland.
+            os.environ["GDK_BACKEND"] = "wayland"
+            os.execvp("gtklock", args)
+        else:
+            args = ["swaylock", "--daemonize", "--config", str(self.config / "swaylock/config")]
+            if wallpaper:
+                args.extend(["--image", str(wallpaper), "--scaling", "fill"])
+            os.execvp("swaylock", args)
 
     def menu(self):
         self.open_interface("panel")
@@ -387,7 +417,7 @@ def metrics(kind):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
-    for action in ("session-start", "waybar", "wallpaper-run", "idle", "session-events", "lock", "menu", "panel",
+    for action in ("session-start", "shell", "waybar", "wallpaper-run", "idle", "session-events", "lock", "menu", "panel",
                    "applications", "launcher"):
         sub.add_parser(action)
     sub.add_parser("bar").add_argument("profile", choices=(*PROFILES, "menu"))
@@ -396,6 +426,8 @@ def main():
     wall.add_argument("path", nargs="?")
     sub.add_parser("presentation").add_argument("operation", choices=("toggle", "status", "on", "off"))
     sub.add_parser("metrics").add_argument("kind", choices=("gpu", "hardware"))
+    sub.add_parser("music").add_argument("operation", nargs="?", default="open",
+                                        choices=("open", "status", "play-pause", "previous", "next"))
     args = parser.parse_args()
     try:
         desktop = Desktop()
@@ -407,6 +439,8 @@ def main():
             desktop.presentation(args.operation)
         elif args.action == "metrics":
             metrics(args.kind)
+        elif args.action == "music":
+            desktop.music(args.operation)
         elif args.action in ("idle", "session-events"):
             desktop.idle(events=args.action == "session-events")
         else:

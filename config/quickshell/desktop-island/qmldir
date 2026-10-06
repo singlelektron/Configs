@@ -1,0 +1,8 @@
+singleton DesktopState 1.0 DesktopState.qml
+IslandBar 1.0 IslandBar.qml
+MusicCard 1.0 MusicCard.qml
+UpdatesCard 1.0 UpdatesCard.qml
+InkLabel 1.0 InkLabel.qml
+Icon 1.0 Icon.qml
+IconButton 1.0 IconButton.qml
+Art 1.0 Art.qml

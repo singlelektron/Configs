@@ -3,11 +3,14 @@
 niri
 xwayland-satellite
 waybar
+quickshell
+pacman-contrib
 fuzzel
 mako
 swaybg
 swayidle
 swaylock
+gtklock
 xdg-desktop-portal-gnome
 xdg-desktop-portal-gtk
 pipewire
