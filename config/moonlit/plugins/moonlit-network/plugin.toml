@@ -1,0 +1,18 @@
+id = "dotfiles/moonlit-network"
+name = "Network overview"
+version = "0.1.0"
+plugin_api = 24
+author = "dotfiles"
+license = "MIT"
+description = "Read-only Ethernet, Wi-Fi and default routes beside native network settings."
+dependencies = ["python3", "networkmanager", "iproute2"]
+[[shortcut]]
+id = "network"
+entry = "shortcut.luau"
+[[panel]]
+id = "overview"
+entry = "panel.luau"
+width = 740
+height = 620
+placement = "floating"
+position = "top_left"

@@ -1,0 +1,40 @@
+id = "dotfiles/moonlit-music"
+name = "Moonlit Music"
+version = "0.1.0"
+plugin_api = 32
+author = "dotfiles"
+license = "MIT"
+icon = "music"
+description = "Quiet music controls and a shared-player listening room. Preview phase."
+tags = ["media", "music"]
+dependencies = ["python3", "python-gobject"]
+
+[[service]]
+id = "media"
+entry = "service.luau"
+
+[[widget]]
+id = "bar"
+entry = "bar.luau"
+
+[[panel]]
+id = "controls"
+entry = "controls.luau"
+width = 460
+height = 370
+placement = "attached"
+position = "auto"
+open_near_click = true
+keyboard_focus = "on_demand"
+dismiss_on_outside_click = true
+
+[[panel]]
+id = "room"
+entry = "room.luau"
+width = 1120
+height = 700
+placement = "floating"
+position = "center"
+open_near_click = false
+keyboard_focus = "on_demand"
+dismiss_on_outside_click = true
