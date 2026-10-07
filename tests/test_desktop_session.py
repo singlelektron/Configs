@@ -108,9 +108,9 @@ include optional=true "../dotfiles-local/niri.kdl"
     def git(self, *args):
         return subprocess.check_output(["git", "-C", str(self.repo), *args], text=True)
 
-    def prepare(self):
+    def prepare(self, **kwargs):
         session.prepare(self.repo, "HEAD", self.old, self.release, self.live,
-                        Path("/usr/bin/true"), self.libs, self.wallpapers, self.home)
+                        Path("/usr/bin/true"), self.libs, self.wallpapers, self.home, **kwargs)
         self.commands.clear()
         return self.live / "transaction.json"
 
@@ -274,6 +274,110 @@ include optional=true "../dotfiles-local/niri.kdl"
         source.write_text("tampered")
         with self.assertRaisesRegex(session.SessionError, "content changed"):
             session.deploy(transaction, apply=True)
+
+    def test_capabilities_are_explicit_and_only_one_new_permission_is_allowed(self):
+        with self.assertRaisesRegex(session.SessionError, "Unsupported device"):
+            self.prepare(capabilities=["notifications"])
+        with self.assertRaisesRegex(session.SessionError, "only one new"):
+            self.prepare(capabilities=["audio", "network"])
+        self.assertFalse(self.release.exists())
+        self.assertEqual(session.capability_list(["network", "audio", "audio"]), ["audio", "network"])
+
+    def test_upgrade_restores_previous_moonlit_without_restarting_old_wallpaper(self):
+        old_transaction = self.prepare()
+        old_release, old_live = self.release, self.live
+        wallpaper = self.wallpapers / "quiet-street.png"
+        wallpaper.write_bytes(b"wallpaper fixture")
+        self.write(old_live, "state/noctalia/settings.toml", '[shell]\npolkit_agent=true\n'
+                   '[notification]\nenable_daemon=true\n[wallpaper.default]\npath=' + json.dumps(str(wallpaper)) + '\n')
+        self.write(old_live, "state/noctalia/plugins/data/dotfiles/moonlit-music/media-control.json",
+                   '{"selected":"org.mpris.MediaPlayer2.fixture"}\n')
+        with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control):
+            session.deploy(old_transaction, apply=True)
+            self.release, self.live = self.root / "audio-release", self.root / "audio-live"
+            transaction = self.prepare(capabilities=["audio"], inherit_transaction=old_transaction)
+            manifest = session.verify(self.release)
+            self.assertEqual(manifest["predecessor"]["release"], str(old_release))
+            runtime = json.loads((self.release / "managed/niri/moonlit-session.json").read_text())
+            self.assertEqual(runtime["capabilities"], ["audio"])
+            self.assertEqual((self.release / "managed/niri/config.kdl").read_text().count('include "moonlit-theme.kdl"'), 1)
+            preferences = tomllib.loads((self.live / "state/noctalia/settings.toml").read_text())
+            self.assertEqual(preferences, {"wallpaper": {"default": {"path": str(wallpaper)}}})
+            self.assertTrue((self.live / "state/noctalia/plugins/data/dotfiles/moonlit-music/media-control.json").is_file())
+            safety = tomllib.loads((self.live / "config/noctalia/zz-basic-safety.toml").read_text())
+            self.assertIn("volume", safety["bar"]["default"]["end"])
+            self.assertNotIn("audio", safety["control_center"]["hidden_tabs"])
+            self.assertFalse(safety["notification"]["enable_daemon"])
+            self.assertEqual(session.deploy(transaction, apply=True)["phase"], "active")
+            self.commands.clear()
+            session.restore(transaction, apply=True)
+        for name in session.TARGETS:
+            self.assertEqual(os.readlink(self.home / ".config" / name), str(old_release / "managed" / name))
+        self.assertNotIn(("start", session.WALLPAPER), self.commands)
+        self.assertEqual(self.unit_states[session.WALLPAPER], "inactive")
+        self.assertEqual(session.journal(old_transaction)["phase"], "active")
+
+    def test_upgrade_cannot_inherit_an_inactive_or_displaced_release(self):
+        old_transaction = self.prepare()
+        self.release, self.live = self.root / "new-release", self.root / "new-live"
+        with self.assertRaisesRegex(session.SessionError, "previously active"):
+            self.prepare(capabilities=["audio"], inherit_transaction=old_transaction)
+        with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control):
+            session.deploy(old_transaction, apply=True)
+        target = self.home / ".config/kitty/theme.conf"
+        target.unlink()
+        target.write_text("personal")
+        with self.assertRaisesRegex(session.SessionError, "no longer the deployed release"):
+            self.prepare(capabilities=["audio"], inherit_transaction=old_transaction)
+        self.assertFalse(self.release.exists())
+
+    def test_failed_upgrade_rolls_back_to_previous_moonlit_release(self):
+        old_transaction = self.prepare()
+        old_release = self.release
+        with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control):
+            session.deploy(old_transaction, apply=True)
+            self.release, self.live = self.root / "new-release", self.root / "new-live"
+            transaction = self.prepare(capabilities=["network"], inherit_transaction=old_transaction)
+            with mock.patch.object(session, "start", side_effect=session.SessionError("new stage failed")):
+                with self.assertRaisesRegex(session.SessionError, "new stage failed"):
+                    session.deploy(transaction, apply=True)
+        self.assertEqual(session.journal(transaction)["phase"], "restored")
+        self.assertEqual(os.readlink(self.home / ".config/niri/config.kdl"), str(old_release / "managed/niri/config.kdl"))
+        self.assertEqual(self.unit_states, {session.BAR: "active", session.WALLPAPER: "inactive"})
+
+    def test_each_following_stage_explicitly_retains_previous_capabilities(self):
+        transaction = self.prepare()
+        with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control):
+            session.deploy(transaction, apply=True)
+            for index, caps in enumerate((["audio"], ["audio", "network"], ["audio", "network", "bluetooth"]), 1):
+                self.release, self.live = self.root / f"release-{index}", self.root / f"live-{index}"
+                transaction = self.prepare(capabilities=caps, inherit_transaction=transaction)
+                session.deploy(transaction, apply=True)
+                self.assertEqual(session.status(transaction)["capabilities"], sorted(caps))
+
+    def test_interrupted_install_discovers_backup_before_standalone_restore(self):
+        transaction = self.prepare()
+        module, manifest = session.guarded_deployer(self.release)
+        install = module.install
+        def interrupted(*args, **kwargs):
+            result = install(*args, **kwargs)
+            if kwargs.get("apply"):
+                raise KeyboardInterrupt("interrupted before backup returned")
+            return result
+        module.install = interrupted
+        with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control):
+            with mock.patch.object(session, "guarded_deployer", return_value=(module, manifest)):
+                with self.assertRaises(KeyboardInterrupt):
+                    session.deploy(transaction, apply=True)
+            self.assertIsNone(session.journal(transaction)["backup"])
+            self.assertEqual(session.journal(transaction)["phase"], "deploying")
+            preview = session.restore(transaction)
+            self.assertIsNotNone(preview["backup"])
+            self.assertIsNone(session.journal(transaction)["backup"])
+            session.restore(transaction, apply=True)
+        self.assertEqual(session.journal(transaction)["phase"], "restored")
+        self.assertEqual(os.readlink(self.home / ".config/niri/config.kdl"), str(self.old / "platforms/linux/niri/config.kdl"))
+        self.assertEqual(self.unit_states, {session.BAR: "active", session.WALLPAPER: "active"})
 
 
 if __name__ == "__main__":

@@ -61,6 +61,12 @@ python3 "$session_tool" restore --transaction "$transaction" --apply
 
 先人工验收英语界面、区域日期、真实分辨率 / 缩放、弹层焦点、启动器普通应用与 Terminal=true 应用、Kitty / Neovim、中文候选与剪贴板、媒体键和来源选择，以及恢复路径。**这些 GUI 项目未通过前，不进入设备控制阶段或放宽代理。** Wi-Fi、蓝牙、真实 stream→sink、通知和会话操作需要之后分别验收；状态命令返回 ready 不能替代它们。
 
+设备阶段沿用 `prepare`，增加 `--inherit-transaction "$previous_transaction"` 和重复的 `--capability`；仅支持 `audio`、`network`、`bluetooth`。
+每次必须显式列出希望保留的完整能力集合，最多新增一项：例如先 `--capability audio`，下一阶段写 `--capability audio --capability network`；省略的能力会关闭。
+继承要求旧事务仍为当前部署的 active 版本；生成新 release 和 live 目录，再预演并应用新事务，无需先回旧 baseline。每阶段人工验收通过后再继续。
+升级只继承有效手动壁纸和音乐来源选择；不会复制可覆盖安全限制的旧设置。通知、caffeine 和会话操作保持此前边界。
+回退新事务会恢复上一个 Moonlit 版本及其服务状态；保留整条 release / transaction / backup 链，按反序回退。安装被中断时，`restore` 会查找本次 release 已写入的备份，不会误用 baseline 修链备份。
+
 ## 隔离预览
 
 获取脚本只校验锁定包的哈希与分离签名并解包，不安装或升级系统包。依赖现有兼容的 Arch / Wayland、Niri、Kitty、Python GObject 和 DBus 工具。

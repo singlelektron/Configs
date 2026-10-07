@@ -131,6 +131,47 @@ class BridgeTests(unittest.TestCase):
         self.assertNotIn('QALCULATE_DEFINITIONS_DIR',
                          m.shell_environment(self.value, 'session-proxy', 'system-proxy'))
 
+    def test_manifest_capabilities_are_opt_in_and_reject_unknown_or_malformed_lists(self):
+        self.assertEqual(m.capabilities(m.read_manifest(self.link)), frozenset())
+        for selected in (['audio'], ['network','bluetooth'], ['audio','bluetooth','network']):
+            self.value['capabilities']=selected
+            self.write_manifest()
+            self.assertEqual(m.capabilities(m.read_manifest(self.link)), frozenset(selected))
+        for selected in ('audio', None, ['notifications'], ['session'], ['audio','audio'], [1], [{}]):
+            self.value['capabilities']=selected
+            self.write_manifest()
+            with self.subTest(selected=selected),self.assertRaisesRegex(m.DesktopError,'capabilities'):
+                m.read_manifest(self.link)
+
+    def test_audio_capability_preserves_real_remote_or_default_without_weakening_buses(self):
+        self.value['capabilities']=['audio']
+        env=m.shell_environment(self.value,'session-proxy','system-proxy')
+        self.assertEqual(env['PIPEWIRE_REMOTE'],'pipewire-0')
+        self.assertEqual(env['DBUS_SESSION_BUS_ADDRESS'],'session-proxy')
+        self.assertEqual(env['DBUS_SYSTEM_BUS_ADDRESS'],'system-proxy')
+        del os.environ['PIPEWIRE_REMOTE']
+        self.assertNotIn('PIPEWIRE_REMOTE',m.shell_environment(self.value,'session-proxy','system-proxy'))
+        self.value['capabilities']=['network','bluetooth']
+        self.assertEqual(m.shell_environment(self.value,'s','b')['PIPEWIRE_REMOTE'],'moonlit-basic-unavailable')
+
+    def test_capabilities_grant_only_their_exact_device_service_and_keep_session_policy(self):
+        base=m.proxy_commands(self.live,'session','system')
+        for selected,expected in (([],[]),(['audio'],[]),(['network'],['org.freedesktop.NetworkManager']),
+                (['bluetooth'],['org.bluez']),(['network','bluetooth'],['org.freedesktop.NetworkManager','org.bluez'])):
+            with self.subTest(selected=selected):
+                system,session=m.proxy_commands(self.live,'session','system',selected)
+                self.assertEqual([arg for arg in system if arg.startswith('--talk=')],['--talk='+name for name in expected])
+                self.assertFalse(any(arg.startswith('--own=') for arg in system))
+                self.assertEqual(session,base[1])
+
+    def test_safety_probe_never_requests_a_real_device_or_logind_operation(self):
+        with mock.patch.object(m.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','Access denied')) as run:
+            m.verify_proxy('proxy')
+        command=run.call_args.args[0]
+        self.assertEqual(command[3:8],['org.freedesktop.login1','/org/freedesktop/login1/moonlit_denied_probe',
+            'org.freedesktop.DBus.Properties','Set','ssv'])
+        self.assertIn('MoonlitDeniedProbe',command)
+
     def test_proxy_only_allows_read_devices_and_explicit_player_transport(self):
         system, session = m.proxy_commands(self.live, 'real-session', 'real-system')
         self.assertEqual(system[1], 'real-system')
@@ -280,11 +321,51 @@ class PrivateBusTests(unittest.TestCase):
                                 self.assertNotEqual(reply.returncode,0,reply.stdout)
                                 self.assertTrue(any(word in reply.stderr.lower() for word in ('denied','serviceunknown')),reply.stderr)
                         self.check_media_transport(address,proxy_address,children)
+                self.check_device_capabilities(root,address,children)
             finally:
                 for child in reversed(children):
                     m.stop_process(child)
                     if child.stdout:child.stdout.close()
                     if child.stderr:child.stderr.close()
+
+    def check_device_capabilities(self,root,address,children):
+        # Distinct service connections are essential: real NM and BlueZ each
+        # have their own unique bus owner. No host service is contacted.
+        provider='''import sys
+from gi.repository import Gio,GLib
+connection=Gio.DBusConnection.new_for_address_sync(sys.argv[1],Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT|Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,None,None)
+connection.call_sync('org.freedesktop.DBus','/org/freedesktop/DBus','org.freedesktop.DBus','RequestName',GLib.Variant('(su)',(sys.argv[2],4)),None,Gio.DBusCallFlags.NONE,2000,None)
+xml='<node><interface name="test.MoonlitDevice"><method name="Change"><arg name="result" type="s" direction="out"/></method></interface></node>'
+def method(conn,sender,path,interface,name,args,invocation):invocation.return_value(GLib.Variant('(s)',('fixture accepted',)))
+connection.register_object('/test/device',Gio.DBusNodeInfo.new_for_xml(xml).interfaces[0],method,None,None)
+print('ready',flush=True)
+GLib.MainLoop().run()
+'''
+        import select
+        for name in ('org.freedesktop.NetworkManager','org.bluez'):
+            proc=subprocess.Popen([sys.executable,'-c',provider,address,name],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+            children.append(proc)
+            self.assertTrue(select.select([proc.stdout],[],[],4)[0],'device fixture did not start')
+            self.assertEqual(proc.stdout.readline().strip(),'ready')
+        for index,selected in enumerate(([],['audio'],['network'],['bluetooth'],['audio','network','bluetooth'])):
+            profile=root/('capabilities-'+str(index));profile.mkdir()
+            command=m.proxy_commands(profile,address,address,selected)[0]
+            proxy=subprocess.Popen(command,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);children.append(proxy)
+            path=profile/'system-bus';deadline=time.monotonic()+3
+            while not path.exists() and proxy.poll() is None and time.monotonic()<deadline:time.sleep(.025)
+            self.assertTrue(path.exists())
+            proxy_address='unix:path='+str(path)
+            m.verify_proxy(proxy_address)
+            for capability,name in (('network','org.freedesktop.NetworkManager'),('bluetooth','org.bluez')):
+                reply=subprocess.run(['busctl','--address='+proxy_address,'call',name,'/test/device','test.MoonlitDevice','Change'],capture_output=True,text=True,timeout=4)
+                with self.subTest(capabilities=selected,service=name):
+                    if capability in selected:
+                        self.assertEqual(reply.returncode,0,reply.stderr)
+                        self.assertIn('fixture accepted',reply.stdout)
+                    else:
+                        self.assertNotEqual(reply.returncode,0)
+                        self.assertIn('denied',reply.stderr.lower())
+            m.stop_process(proxy)
 
     def check_media_transport(self, address, proxy_address, children):
         # These processes are synthetic protocol fixtures on the private bus;

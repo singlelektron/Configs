@@ -3,7 +3,7 @@
 
 Deployment owns the manifest. This bridge never installs/enables a service and
 keeps legacy lock, idle, notification and presentation commands on their pinned
-helper. Noctalia alone gets filtered D-Bus and an unavailable PipeWire remote.
+helper. Noctalia gets filtered D-Bus; device writes require explicit capabilities.
 """
 import fcntl
 import hashlib
@@ -22,6 +22,7 @@ import tempfile
 import time
 
 BAR_UNIT = 'dotfiles-niri-waybar.service'
+DEVICE_CAPABILITIES = frozenset(('audio', 'network', 'bluetooth'))
 KEEP_UNITS = tuple('dotfiles-niri-' + name + '.service' for name in ('mako', 'idle', 'session-events', 'polkit'))
 SYSTEM_READ = {
     'org.freedesktop.NetworkManager': ('GetDevices', 'GetAllDevices', 'GetDeviceByIpIface', 'GetPermissions'),
@@ -111,6 +112,14 @@ def manifest_path():
     return path
 
 
+def capabilities(value):
+    selected = value.get('capabilities', [])
+    if (not isinstance(selected, list) or any(not isinstance(item, str) for item in selected)
+            or len(set(selected)) != len(selected) or not set(selected) <= DEVICE_CAPABILITIES):
+        raise DesktopError('Unsupported Moonlit device capabilities')
+    return frozenset(selected)
+
+
 def read_manifest(path=None):
     path = path or manifest_path()
     target = path.resolve(strict=True)
@@ -122,6 +131,7 @@ def read_manifest(path=None):
         raise DesktopError('Unsupported Moonlit session manifest')
     if value.get('bar_unit') != BAR_UNIT:
         raise DesktopError('Unexpected shell service in Moonlit manifest')
+    capabilities(value)
     for key in ('legacy_desktopctl', 'live_root', 'binary', 'config_dir', 'state_dir', 'data_dir', 'cache_dir', 'release', 'transaction'):
         raw = value.get(key)
         if not isinstance(raw, str) or not Path(raw).is_absolute():
@@ -166,9 +176,11 @@ def shell_environment(value, session_address, system_address):
     env.update(NOCTALIA_CONFIG_HOME=value['config_dir'], NOCTALIA_STATE_HOME=value['state_dir'],
                NOCTALIA_DATA_HOME=value['data_dir'], XDG_CACHE_HOME=value['cache_dir'],
                DBUS_SESSION_BUS_ADDRESS=session_address, DBUS_SYSTEM_BUS_ADDRESS=system_address,
-               PIPEWIRE_REMOTE='moonlit-basic-unavailable', GSETTINGS_BACKEND='memory',
+               GSETTINGS_BACKEND='memory',
                MOONLIT_SESSION_MANIFEST=str(Path(value['release'])/'managed/niri/moonlit-session.json'),
                TERMINAL=shlex.join(['/usr/bin/python3',str(fixed_helper(value)),'terminal']))
+    if 'audio' not in capabilities(value):
+        env['PIPEWIRE_REMOTE'] = 'moonlit-basic-unavailable'
     if value.get('library_path'):
         env['LD_LIBRARY_PATH'] = value['library_path']
         # Packaged libqalculate otherwise looks in the system /usr/share.
@@ -215,7 +227,8 @@ def terminal_launch(value, arguments):
     return host_launch(['kitty',*arguments])
 
 
-def proxy_commands(root, session_address, system_address):
+def proxy_commands(root, session_address, system_address, allowed=frozenset()):
+    allowed = capabilities({'capabilities':list(allowed)})
     system = ['xdg-dbus-proxy', system_address, str(root/'system-bus'), '--filter', '--log']
     for name, methods in SYSTEM_READ.items():
         interface = name + '.Manager' if name == 'org.freedesktop.login1' else name
@@ -226,6 +239,13 @@ def proxy_commands(root, session_address, system_address):
                '--call=org.freedesktop.NetworkManager=org.freedesktop.NetworkManager.Device.Wireless.GetAllAccessPoints',
                '--call=org.freedesktop.NetworkManager=org.freedesktop.NetworkManager.Settings.ListConnections',
                '--call=org.freedesktop.NetworkManager=org.freedesktop.NetworkManager.Settings.Connection.GetSettings']
+    if 'network' in allowed:
+        # TALK also permits NetworkManager's callbacks to the secret agent.
+        system += ['--talk=org.freedesktop.NetworkManager']
+    if 'bluetooth' in allowed:
+        # Native BlueZ startup reconnects paired, trusted devices automatically.
+        # This capability explicitly permits that behavior and pairing callbacks.
+        system += ['--talk=org.bluez']
     session = ['xdg-dbus-proxy', session_address, str(root/'session-bus'), '--filter', '--log',
                '--own=dev.noctalia.Mpris', '--own=dev.noctalia.Debug', '--see=org.mpris.MediaPlayer2.*',
                '--broadcast=org.mpris.MediaPlayer2.*=*', '--see=org.freedesktop.Notifications',
@@ -246,7 +266,11 @@ def verify_proxy(address, session=False):
         args = ['org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'RequestName',
                 'su', f'org.freedesktop.ScreenSaver.MoonlitDeniedProbe.p{os.getpid()}_{time.monotonic_ns()}', '4']
     else:
-        args = ['org.bluez', '/org/bluez/moonlit_denied_probe', 'org.bluez.Device1', 'Connect']
+        # Device capabilities never grant login/session writes. The nonexistent
+        # object and property also make this harmless if filtering was broken.
+        args = ['org.freedesktop.login1', '/org/freedesktop/login1/moonlit_denied_probe',
+                'org.freedesktop.DBus.Properties', 'Set', 'ssv',
+                'org.freedesktop.login1.Manager', 'MoonlitDeniedProbe', 'b', 'false']
     result = subprocess.run(['busctl', '--address=' + address, 'call', *args], capture_output=True, text=True, timeout=4)
     # A name hidden by the proxy is rewritten to ServiceUnknown even though
     # RequestName itself targets the bus; a real bus accepts this unique name.
@@ -306,7 +330,8 @@ def shell(value):
         if owner.stdout.strip() != 'b false':
             raise DesktopError('Another Noctalia media owner is already running')
         records = {'runner': identity(os.getpid()), 'niri': niri}
-        for name, command in zip(('system_proxy', 'session_proxy'), proxy_commands(root, original_session, original_system)):
+        for name, command in zip(('system_proxy', 'session_proxy'),
+                                 proxy_commands(root, original_session, original_system, capabilities(value))):
             socket_path = root/('system-bus' if name=='system_proxy' else 'session-bus')
             socket_path.unlink(missing_ok=True)
             with (root/(name+'.log')).open('a') as log:
@@ -402,7 +427,7 @@ def dispatch(argv, value):
         if not isinstance(state,dict) or not state:
             raise DesktopError('Noctalia returned invalid status')
         session=json.loads((Path(value['live_root'])/'session.json').read_text())
-        print(json.dumps({'ready':True,'phase':value['phase'],
+        print(json.dumps({'ready':True,'phase':value['phase'],'capabilities':sorted(capabilities(value)),
               'processes':{key:session[key] for key in ('runner','niri','shell','system_proxy','session_proxy')},
               'noctalia':state}))
         return 0

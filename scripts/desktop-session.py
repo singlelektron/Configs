@@ -22,6 +22,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import tomllib
 import types
 
 REPO = Path(__file__).resolve().parents[1]
@@ -29,6 +30,7 @@ KIND = "moonlit-basic-session-v1"
 BAR = "dotfiles-niri-waybar.service"
 WALLPAPER = "dotfiles-niri-wallpaper.service"
 CHANGED_UNITS = (BAR, WALLPAPER)
+CAPABILITIES = ("audio", "network", "bluetooth")
 TARGETS = (
     "niri/config.kdl", "niri/desktopctl.py", "niri/moonlit-session.json",
     "niri/moonlit-theme.kdl", "systemd/user/" + BAR,
@@ -102,22 +104,82 @@ window-rule {
     return text.replace(marker, appearance + marker)
 
 
-def basic_config(wallpapers, key_file, source=REPO):
+def capability_list(values):
+    if not isinstance(values, (list, tuple)) or any(value not in CAPABILITIES for value in values):
+        raise SessionError("Unsupported device capability; expected audio, network or bluetooth")
+    return sorted(set(values))
+
+
+def basic_config(wallpapers, key_file, source=REPO, capabilities=()):
     # Device permissions are independently enforced by the bridge's two proxies.
+    capabilities = capability_list(capabilities)
     preview = load_module(source / "scripts/desktop-preview.py", "session_preview_config")
+    end = ["launcher", "moonlit_updates", "date", "clock"]
+    hidden = ["audio", "monitor", "system", "weather", "calendar", "notifications", "screen-time", "power"]
+    shortcuts = ["dotfiles/moonlit-network:network", "bluetooth", "media", "wallpaper"]
+    if "audio" in capabilities:
+        end.insert(2, "volume")
+        hidden.remove("audio")
+        shortcuts.insert(2, "audio")
     return preview.safety_config(wallpapers, key_file) + '''
 [shell.launcher]
 fetch_exchange_rates = false
 [bar.default]
-end = ["launcher", "moonlit_updates", "date", "clock"]
+end = ''' + json.dumps(end) + '''
 [control_center]
 show_session_button = false
-hidden_tabs = ["audio", "monitor", "system", "weather", "calendar", "notifications", "screen-time", "power"]
-shortcuts = [{type="dotfiles/moonlit-network:network"}, {type="bluetooth"}, {type="media"}, {type="wallpaper"}]
-'''
+hidden_tabs = ''' + json.dumps(hidden) + '\nshortcuts = [' + ', '.join(
+        '{type=' + json.dumps(name) + '}' for name in shortcuts) + ']\n'
 
 
-def prepare(source_repo, commit, baseline, release, live_root, binary, library_path, wallpapers, home=None):
+def predecessor(path, baseline, config, state):
+    path = checked_path(path)
+    value = journal(path)
+    release = Path(value["release"])
+    manifest = verify(release)
+    if value["phase"] != "active":
+        raise SessionError("Only a previously active transaction can be inherited")
+    if (manifest["baseline"], manifest["config"], manifest["state"]) != (str(baseline), str(config), str(state)):
+        raise SessionError("Inherited transaction must use the same baseline and XDG deployment roots")
+    for name in TARGETS:
+        target = config / name
+        if not target.is_symlink() or os.readlink(target) != str(release / "managed" / name):
+            raise SessionError("Inherited transaction is no longer the deployed release: " + str(target))
+    runtime = json.loads((release / "managed/niri/moonlit-session.json").read_text())
+    capability_list(runtime.get("capabilities", []))
+    return {"release": str(release), "transaction": str(path)}, runtime
+
+
+def inherit_preferences(runtime, live_root, wallpapers):
+    # Carry only the manually selected wallpaper and music choice. Never import
+    # old settings tables, which could override this stage's safety profile.
+    old = checked_path(Path(runtime["state_dir"])) / "noctalia"
+    settings = old / "settings.toml"
+    if settings.is_file() and not settings.is_symlink():
+        wallpaper = tomllib.loads(settings.read_text()).get("wallpaper", {})
+        entries = [("wallpaper." + name, wallpaper.get(name, {})) for name in ("default", "last")]
+        entries.extend(("wallpaper.monitors." + json.dumps(name), choice)
+                       for name, choice in wallpaper.get("monitors", {}).items())
+        text = []
+        for table, choice in entries:
+            raw = choice.get("path") if isinstance(choice, dict) else None
+            if not isinstance(raw, str):
+                continue
+            image = Path(raw).resolve()
+            if image.is_file() and wallpapers in image.parents:
+                text.append("[" + table + "]\npath = " + json.dumps(str(image)) + "\n")
+        if text:
+            (live_root / "state/noctalia/settings.toml").write_text("\n".join(text))
+    music = old / "plugins/data/dotfiles/moonlit-music/media-control.json"
+    if music.is_file() and not music.is_symlink():
+        target = live_root / "state/noctalia/plugins/data/dotfiles/moonlit-music/media-control.json"
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        atomic_json(target, json.loads(music.read_text()))
+
+
+def prepare(source_repo, commit, baseline, release, live_root, binary, library_path, wallpapers, home=None,
+            capabilities=(), inherit_transaction=None):
+    capabilities = capability_list(capabilities)
     source_repo = checked_path(source_repo)
     baseline, release, live_root = map(checked_path, (baseline, release, live_root))
     for path in (release, live_root):
@@ -132,6 +194,12 @@ def prepare(source_repo, commit, baseline, release, live_root, binary, library_p
     commit = git(source_repo, "rev-parse", "--verify", "--end-of-options", commit + "^{commit}").decode().strip()
     baseline_tool = load_module(REPO / "scripts/desktop-baseline.py", "session_baseline")
     baseline_tool.verify(baseline)
+    deployer = load_module(REPO / "scripts/deploy.py", "session_deploy_locations")
+    config, state = deployer.locations(home)
+    previous, old_runtime = predecessor(inherit_transaction, baseline, config, state) if inherit_transaction else (None, None)
+    previous_capabilities = set(old_runtime.get("capabilities", [])) if old_runtime else set()
+    if len(set(capabilities) - previous_capabilities) > 1:
+        raise SessionError("Enable only one new device capability per stage")
     binary = binary.expanduser().resolve(strict=True)
     library_path = Path(library_path).expanduser().resolve(strict=True)
     wallpapers = wallpapers.expanduser().resolve(strict=True)
@@ -164,17 +232,18 @@ def prepare(source_repo, commit, baseline, release, live_root, binary, library_p
     fd = os.open(key_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, "w") as stream:
         stream.write(os.urandom(32).hex() + "\n")
-    safety = basic_config(wallpapers, key_file, source)
+    safety = basic_config(wallpapers, key_file, source, capabilities)
     # Put supported launcher fields in the existing shell table, not a duplicate table.
     launcher = shlex.join(["/usr/bin/python3", str(release / "managed/niri/desktopctl.py"), "launch", "--"]) + " $CMD"
     safety = safety.replace("[shell]\n", '[shell]\nlaunch_apps_custom_command = ' + json.dumps(launcher)
                             + '\nlaunch_apps_as_systemd_services = false\n', 1)
     (live_root / "config/noctalia/zz-basic-safety.toml").write_text(safety)
-    deployer = load_module(source / "scripts/deploy.py", "session_deploy_locations")
-    config, state = deployer.locations(home)
+    if old_runtime:
+        inherit_preferences(old_runtime, live_root, wallpapers)
     transaction = live_root / "transaction.json"
     legacy_helper = baseline / "config/desktop/desktopctl.py"
     runtime = {"schema": 1, "kind": "moonlit-live-session", "phase": "basic",
+               "capabilities": capabilities,
                "legacy_desktopctl": str(legacy_helper), "legacy_sha256": sha(legacy_helper),
                "live_root": str(live_root), "binary": str(binary), "binary_sha256": sha(binary),
                "library_path": str(library_path), "config_dir": str(live_root / "config"),
@@ -217,7 +286,8 @@ Slice=session.slice
             files[path.relative_to(release).as_posix()] = sha(path)
     manifest = {"version": 1, "kind": KIND, "commit": commit, "source_repo": str(source_repo),
                 "baseline": str(baseline), "live_root": str(live_root), "transaction": str(transaction),
-                "config": str(config), "state": str(state), "files": files}
+                "config": str(config), "state": str(state), "files": files, "predecessor": previous,
+                "capabilities": capabilities}
     atomic_json(release / "manifest.json", manifest)
     (release / "manifest.json").chmod(0o444)
     for parent, _, _ in os.walk(release, topdown=False):
@@ -322,20 +392,40 @@ def guarded_deployer(release):
     config = Path(manifest["config"])
     source_repo, baseline = Path(manifest["source_repo"]), Path(manifest["baseline"])
     allowed = {config / name: {str(release / "managed" / name)} for name in TARGETS}
-    for target, source in LEGACY_SOURCES.items():
-        allowed[config / target].add(str(baseline / source))
-    allowed[config / "kitty/theme.conf"].add(str(source_repo / "config/kitty/theme.conf"))
+    previous = manifest.get("predecessor")
+    if previous:
+        previous_release = Path(previous["release"])
+        verify(previous_release)
+        for name in TARGETS:
+            allowed[config / name].add(str(previous_release / "managed" / name))
+    else:
+        for target, source in LEGACY_SOURCES.items():
+            allowed[config / target].add(str(baseline / source))
+        allowed[config / "kitty/theme.conf"].add(str(source_repo / "config/kitty/theme.conf"))
     original = module.snapshot
 
     def snapshot(path):
         current = original(path)
-        if path in allowed and current is not None:
-            if current["kind"] != "symlink" or current["destination"] not in allowed[path]:
+        if path in allowed:
+            if current is None and previous:
+                raise module.DeploymentError("Inherited configuration disappeared; review required: " + str(path))
+            if current is not None and (current["kind"] != "symlink" or current["destination"] not in allowed[path]):
                 raise module.DeploymentError("Unknown existing configuration; review required: " + str(path))
         return current
 
     module.snapshot = snapshot
     return module, manifest
+
+
+def discover_backup(release, state):
+    candidates = []
+    for path in (state / "dotfiles/backups").glob("*/manifest.json"):
+        try:
+            if json.loads(path.read_text()).get("repo") == str(release):
+                candidates.append(path)
+        except (OSError, ValueError):
+            continue
+    return max(candidates, key=lambda path: path.stat().st_mtime_ns).parent if candidates else None
 
 
 def deploy(transaction, apply=False):
@@ -371,15 +461,9 @@ def deploy(transaction, apply=False):
         except Exception:
             # A partial install's manifest is discoverable even if install raised
             # before returning it; recovery never restores the baseline repair.
-            candidates = []
-            for p in (Path(manifest["state"]) / "dotfiles/backups").glob("*/manifest.json"):
-                try:
-                    if json.loads(p.read_text()).get("repo") == str(release):
-                        candidates.append(p)
-                except (OSError, ValueError):
-                    continue
-            if not value.get("backup") and candidates:
-                value["backup"] = str(max(candidates, key=lambda p: p.stat().st_mtime_ns).parent)
+            backup = discover_backup(release, Path(manifest["state"]))
+            if not value.get("backup") and backup:
+                value["backup"] = str(backup)
             value["phase"] = "failed"
             atomic_json(transaction, value)
             restore(transaction, apply=True)
@@ -428,7 +512,7 @@ def restore(transaction, apply=False):
     value = journal(transaction)
     release = Path(value["release"])
     module, release_manifest = deployer_for(release)
-    backup = Path(value["backup"]) if value.get("backup") else None
+    backup = Path(value["backup"]) if value.get("backup") else discover_backup(release, Path(release_manifest["state"]))
     try:
         if backup:
             manifest = module.load_manifest(backup)
@@ -442,6 +526,9 @@ def restore(transaction, apply=False):
     if value["services_before"] is None:
         raise SessionError("This transaction has not changed the live session")
     require_host()
+    if backup and not value.get("backup"):
+        value["backup"] = str(backup)
+        atomic_json(transaction, value)
     control("stop", BAR)
     try:
         if backup:
@@ -461,7 +548,8 @@ def restore(transaction, apply=False):
 def status(transaction):
     value = journal(transaction)
     return {"phase": value["phase"], "transaction": str(transaction), "release": value["release"],
-            "backup": value["backup"], "services": services()}
+            "backup": value["backup"], "services": services(),
+            "capabilities": verify(Path(value["release"])).get("capabilities", [])}
 
 
 def main():
@@ -477,6 +565,10 @@ def main():
     parser.add_argument("--wallpapers", type=Path)
     parser.add_argument("--home", type=Path)
     parser.add_argument("--transaction", type=Path)
+    parser.add_argument("--inherit-transaction", type=Path,
+                        help="upgrade the currently deployed active Moonlit transaction")
+    parser.add_argument("--capability", choices=CAPABILITIES, action="append", default=[],
+                        help="complete desired capability set; repeat for retained capabilities, at most one new capability")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     try:
@@ -484,7 +576,8 @@ def main():
             if not all((args.baseline, args.release, args.live_root, args.binary, args.library_path, args.wallpapers)):
                 parser.error("prepare requires --baseline --release --live-root --binary --library-path --wallpapers")
             result = prepare(args.source_repo, args.commit, args.baseline, args.release, args.live_root,
-                             args.binary, args.library_path, args.wallpapers, args.home)
+                             args.binary, args.library_path, args.wallpapers, args.home,
+                             args.capability, args.inherit_transaction)
         else:
             if not args.transaction:
                 parser.error("--transaction is required")
