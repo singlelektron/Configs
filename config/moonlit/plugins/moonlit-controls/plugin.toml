@@ -1,0 +1,12 @@
+id = "dotfiles/moonlit-controls"
+name = "Desktop controls"
+version = "0.1.0"
+plugin_api = 24
+author = "dotfiles"
+license = "MIT"
+description = "Keep awake through the existing Niri presentation backend."
+dependencies = ["python3"]
+
+[[shortcut]]
+id = "awake"
+entry = "awake.luau"

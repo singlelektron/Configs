@@ -9,7 +9,7 @@ macOS 与 Arch Linux 共用的 Kitty / Neovim 配置，以及可选的 Arch Niri
 - Rust：rust-analyzer；Python：basedpyright + Ruff；LaTeX：texlab + VimTeX；Markdown：实时浏览器预览与 KaTeX 数学公式，可选 Marksman。
 - AI agent 在独立终端工作；Neovim 检查外部文件变化，保留有未保存修改时的冲突提示。
 - Niri：二次元壁纸、四个工作区、三档信息栏、中文输入、网课常亮与独立锁屏；[完整使用说明](docs/niri.md)。
-- Moonlit Bloom：视觉已确认，仍以隔离预览进行工程验收；[部署前交接与固定旧桌面基线](docs/moonlit-preview.md)。
+- Moonlit Bloom：支持隔离预览和可恢复的受控会话迁移；[使用与恢复说明](docs/moonlit-preview.md)。
 - 本地差异放在仓库外，旧配置和 Neovim 插件数据保留。不管理 shell、SSH、Git 身份或默认登录会话。
 
 ## 新机器恢复

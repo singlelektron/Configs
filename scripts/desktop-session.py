@@ -30,7 +30,8 @@ KIND = "moonlit-basic-session-v1"
 BAR = "dotfiles-niri-waybar.service"
 WALLPAPER = "dotfiles-niri-wallpaper.service"
 CHANGED_UNITS = (BAR, WALLPAPER)
-CAPABILITIES = ("audio", "network", "bluetooth", "calendar")
+NOTIFICATION_UNITS = ("dotfiles-niri-mako.service", "mako.service")
+CAPABILITIES = ("audio", "network", "bluetooth", "calendar", "notifications", "caffeine")
 TARGETS = (
     "niri/config.kdl", "niri/desktopctl.py", "niri/moonlit-session.json",
     "niri/moonlit-theme.kdl", "systemd/user/" + BAR,
@@ -84,13 +85,20 @@ def git(repo, *args):
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True).stdout
 
 
-def live_niri(text):
+def live_niri(text, notifications=False):
     for key, action in (("XF86AudioPlay", "toggle"), ("XF86AudioNext", "next"), ("XF86AudioPrev", "previous")):
         lines = [line for line in text.splitlines() if line.strip().startswith(key + " ")]
         if len(lines) != 1:
             raise SessionError("Cannot safely identify media binding: " + key)
         command = 'python3 "${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py" media ' + action
         text = text.replace(lines[0], "    " + key + " allow-when-locked=true { spawn-sh " + json.dumps(command) + "; }")
+    if notifications:
+        lines = [line for line in text.splitlines() if line.strip().startswith("Mod+Alt+N ")]
+        if len(lines) != 1:
+            raise SessionError("Cannot safely identify notification binding")
+        command = 'python3 "${XDG_CONFIG_HOME:-$HOME/.config}/niri/desktopctl.py" notifications toggle'
+        text = text.replace(lines[0], '    Mod+Alt+N hotkey-overlay-title="Toggle notifications" { spawn-sh '
+                            + json.dumps(command) + '; }')
     marker = "// Includes remain outside Git."
     if text.count(marker) != 1:
         raise SessionError("Cannot locate the preserved local include boundary")
@@ -106,7 +114,7 @@ window-rule {
 
 def capability_list(values):
     if not isinstance(values, (list, tuple)) or any(value not in CAPABILITIES for value in values):
-        raise SessionError("Unsupported capability; expected audio, network, bluetooth or calendar")
+        raise SessionError("Unsupported capability; expected " + ", ".join(CAPABILITIES))
     return sorted(set(values))
 
 
@@ -125,7 +133,15 @@ def basic_config(wallpapers, key_file, source=REPO, capabilities=(), calendar_di
         if calendar_dir is None:
             raise SessionError("Calendar capability requires a private calendar directory")
         hidden.remove("calendar")
-    text = preview.safety_config(wallpapers, key_file) + '''
+    if "notifications" in capabilities:
+        hidden.remove("notifications")
+        end.insert(2, "notifications")
+    if "caffeine" in capabilities:
+        shortcuts.append("dotfiles/moonlit-controls:awake")
+    safety = preview.safety_config(wallpapers, key_file)
+    if "notifications" in capabilities:
+        safety = safety.replace("[notification]\nenable_daemon = false", "[notification]\nenable_daemon = true")
+    text = safety + '''
 [shell.launcher]
 fetch_exchange_rates = false
 [bar.default]
@@ -139,6 +155,10 @@ hidden_tabs = ''' + json.dumps(hidden) + '\nshortcuts = [' + ', '.join(
     if "calendar" in capabilities:
         text += '[calendar.account.gnome_calendar]\ntype = "vdir"\nname = "GNOME Calendar · read-only"\npath = '
         text += json.dumps(str(calendar_dir)) + '\ncalendars = []\n'
+    if "caffeine" in capabilities:
+        enabled = tomllib.loads((source / "config/moonlit/settings.toml").read_text()).get("plugins", {}).get("enabled", [])
+        enabled = list(dict.fromkeys([*enabled, "dotfiles/moonlit-controls"]))
+        text += '\n[plugins]\nenabled = ' + json.dumps(enabled) + '\n'
     return text
 
 
@@ -230,6 +250,8 @@ def prepare(source_repo, commit, baseline, release, live_root, binary, library_p
                 "config/moonlit/kitty-theme.conf", "config/moonlit/nvim-theme.lua")
     if "calendar" in capabilities:
         required += ("config/moonlit/calendar_bridge.py",)
+    if "caffeine" in capabilities:
+        required += ("config/moonlit/plugins/moonlit-controls/plugin.toml",)
     for name in required:
         if not (source / name).is_file():
             raise SessionError("Committed release lacks required file: " + name)
@@ -268,7 +290,7 @@ def prepare(source_repo, commit, baseline, release, live_root, binary, library_p
     if "calendar" in capabilities:
         runtime["calendar_dir"] = str(calendar_dir)
     generated = {
-        "niri/config.kdl": live_niri((baseline / "platforms/linux/niri/config.kdl").read_text()),
+        "niri/config.kdl": live_niri((baseline / "platforms/linux/niri/config.kdl").read_text(), "notifications" in capabilities),
         "niri/desktopctl.py": (config_source / "desktopctl.py").read_text(),
         "niri/moonlit-session.json": json.dumps(runtime, indent=2) + "\n",
         "niri/moonlit-theme.kdl": (config_source / "niri-theme.kdl").read_text(),
@@ -285,11 +307,23 @@ Type=simple
 UnsetEnvironment=GDK_BACKEND
 ExecStart=/usr/bin/python3 "%E/niri/desktopctl.py" shell
 Restart=no
-KillMode=control-group
-TimeoutStopSec=10
+KillMode=mixed
+TimeoutStopSec=30
 Slice=session.slice
 ''',
     }
+    if set(capabilities) & {"notifications", "caffeine"}:
+        # Cleanup remains bound to this release even after the deployed helper
+        # link changes; systemd also invokes it when the runner is killed.
+        fixed_manifest = json.dumps("MOONLIT_SESSION_MANIFEST=" + str(release / "managed/niri/moonlit-session.json")).replace("%", "%%")
+        fixed_helper = json.dumps(str(release / "managed/niri/desktopctl.py")).replace("%", "%%")
+        unit = "systemd/user/" + BAR
+        cleanup = ["notifications-cleanup"] if "notifications" in capabilities else []
+        if "caffeine" in capabilities:
+            cleanup.append("presentation-cleanup")
+        commands = ''.join("ExecStopPost=:/usr/bin/python3 " + fixed_helper + " " + action + "\n" for action in cleanup)
+        generated[unit] = generated[unit].replace("Type=simple\n", "Type=simple\nEnvironment=" + fixed_manifest
+                          + "\n" + commands, 1)
     for name, contents in generated.items():
         path = release / "managed" / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -304,7 +338,9 @@ Slice=session.slice
     manifest = {"version": 1, "kind": KIND, "commit": commit, "source_repo": str(source_repo),
                 "baseline": str(baseline), "live_root": str(live_root), "transaction": str(transaction),
                 "config": str(config), "state": str(state), "files": files, "predecessor": previous,
-                "capabilities": capabilities}
+                "capabilities": capabilities,
+                "changed_units": list(CHANGED_UNITS + (NOTIFICATION_UNITS if "notifications" in
+                                  (set(capabilities) | previous_capabilities) else ()))}
     atomic_json(release / "manifest.json", manifest)
     (release / "manifest.json").chmod(0o444)
     for parent, _, _ in os.walk(release, topdown=False):
@@ -358,7 +394,7 @@ def journal(path):
     if path != Path(manifest["transaction"]) or value["live_root"] != manifest["live_root"]:
         raise SessionError("Transaction does not belong to this release")
     before = value.get("services_before")
-    if before is not None and (not isinstance(before, dict) or set(before) != set(CHANGED_UNITS)
+    if before is not None and (not isinstance(before, dict) or set(before) != set(changed_units(manifest))
                                or any(not isinstance(state, dict) or state.get("ActiveState") not in
                                       ("active", "inactive", "failed") for state in before.values())):
         raise SessionError("Invalid service recovery scope in transaction")
@@ -383,12 +419,67 @@ def control(*args):
     return subprocess.run(["systemctl", "--user", *args], check=True, capture_output=True, text=True, timeout=20)
 
 
-def services():
+def changed_units(manifest):
+    units = manifest.get("changed_units", list(CHANGED_UNITS))
+    if units not in (list(CHANGED_UNITS), list(CHANGED_UNITS + NOTIFICATION_UNITS)):
+        raise SessionError("Unsupported service scope in release")
+    return tuple(units)
+
+
+def services(units=CHANGED_UNITS):
     result = {}
-    for unit in CHANGED_UNITS:
+    for unit in units:
         values = control("show", unit, "--property=ActiveState,SubState,MainPID").stdout
         result[unit] = dict(line.split("=", 1) for line in values.splitlines() if "=" in line)
     return result
+
+
+def notification_action(release, action):
+    env = dict(os.environ, MOONLIT_SESSION_MANIFEST=str(release / "managed/niri/moonlit-session.json"))
+    subprocess.run([sys.executable, str(release / "managed/niri/desktopctl.py"), action], env=env,
+                   check=True, capture_output=True, text=True, timeout=40)
+
+
+def notification_controller(release, manifest):
+    if "notifications" in manifest.get("capabilities", []):
+        return release
+    previous = manifest.get("predecessor")
+    if previous and "notifications" in verify(Path(previous["release"])).get("capabilities", []):
+        return Path(previous["release"])
+    return None
+
+
+def carry_native_notifications(source_release, target_release):
+    """Preserve this pinned Noctalia's own state after its old process exits.
+
+    Mako exports are kept separately and are never converted into native history.
+    """
+    runtimes = [json.loads((release / "managed/niri/moonlit-session.json").read_text())
+                for release in (source_release, target_release)]
+    if not all("notifications" in runtime.get("capabilities", []) for runtime in runtimes):
+        return
+    if runtimes[0]["binary_sha256"] != runtimes[1]["binary_sha256"]:
+        raise SessionError("Notification history transfer requires the same pinned runtime")
+    old, new = (Path(runtime["live_root"]) for runtime in runtimes)
+    dnd = checked_path(old / "notification-state.json")
+    if dnd.is_file():
+        value = json.loads(dnd.read_text())
+        if not isinstance(value.get("dnd"), bool):
+            raise SessionError("Invalid private DND state")
+        atomic_json(new / "notification-state.json", {"dnd": value["dnd"]})
+    source, target = (Path(runtime["state_dir"]) / "noctalia" for runtime in runtimes)
+    history = checked_path(source / "notification_history.json")
+    if history.is_file():
+        atomic_json(target / history.name, json.loads(history.read_text()))
+    assets = checked_path(source / "notification_history_assets")
+    if assets.is_dir():
+        for item in assets.rglob("*"):
+            checked_path(item)
+            if item.is_file():
+                destination = target / assets.name / item.relative_to(assets)
+                destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                shutil.copyfile(item, destination)
+                destination.chmod(0o600)
 
 
 def require_host():
@@ -453,28 +544,42 @@ def deploy(transaction, apply=False):
         # The original transaction checks every source/target before any mutation.
         module.install(release, Path(manifest["config"]), Path(manifest["state"]), "linux", desktop="niri")
         if not apply:
-            return {"phase": value["phase"], "dry_run": True, "stop_only": list(CHANGED_UNITS)}
+            return {"phase": value["phase"], "dry_run": True, "stop_only": list(changed_units(manifest))}
         if value["phase"] == "active":
             return status(transaction)
         if value["phase"] != "prepared":
             raise SessionError("Transaction already started; use start or restore")
         require_host()
-        before = services()
+        before = services(changed_units(manifest))
         if any(state.get("ActiveState") not in ("active", "inactive", "failed") for state in before.values()):
             raise SessionError("Managed services are changing state; retry when they are stable")
         value.update(services_before=before, phase="stopping")
         atomic_json(transaction, value)
         try:
             for unit, before in value["services_before"].items():
-                if before.get("ActiveState") == "active":
+                # Notification ownership is archived and handed off only after
+                # its runtime activation mask is held by the fixed helper.
+                if unit in CHANGED_UNITS and before.get("ActiveState") == "active":
                     control("stop", unit)
+            previous = manifest.get("predecessor")
+            if previous:
+                carry_native_notifications(Path(previous["release"]), release)
+            controller = notification_controller(release, manifest)
+            if controller:
+                notification_action(controller, "notifications-prepare")
             value["phase"] = "deploying"
             atomic_json(transaction, value)
             backup = module.install(release, Path(manifest["config"]), Path(manifest["state"]), "linux", apply=True, desktop="niri")
             value.update(backup=str(backup) if backup else None, phase="deployed")
             atomic_json(transaction, value)
             control("daemon-reload")
-            return start(transaction)
+            if "notifications" not in manifest.get("capabilities", []) and NOTIFICATION_UNITS[0] in value["services_before"]:
+                control("start", NOTIFICATION_UNITS[0])
+            result = start(transaction)
+            if controller and "notifications" not in manifest.get("capabilities", []):
+                notification_action(controller, "notifications-restore-dnd")
+                notification_action(controller, "notifications-cleanup")
+            return result
         except Exception:
             # A partial install's manifest is discoverable even if install raised
             # before returning it; recovery never restores the baseline repair.
@@ -549,16 +654,52 @@ def restore(transaction, apply=False):
         value["backup"] = str(backup)
         atomic_json(transaction, value)
     control("stop", BAR)
+    controller = notification_controller(release, release_manifest)
+    previous = release_manifest.get("predecessor")
+    transferred_to = None
+    completed = False
     try:
+        if previous:
+            carry_native_notifications(release, Path(previous["release"]))
+        if controller:
+            # ExecStopPost released the old lease. Reacquire while restoring so
+            # D-Bus activation cannot race the original notification provider.
+            notification_action(controller, "notifications-prepare")
         if backup:
             module.restore(backup, apply=True)
+        reload_niri(Path(release_manifest["config"]))
+        control("daemon-reload")
+        if (controller and previous and value["services_before"][BAR].get("ActiveState") == "active"
+                and "notifications" in verify(Path(previous["release"])).get("capabilities", [])):
+            # Do not let the previous runner mistake this release's mask for a
+            # user-owned preexisting mask. Its own prepare closes any activation
+            # race and creates the lease its stop hooks must later release.
+            notification_action(controller, "notifications-cleanup")
+            transferred_to = Path(previous["release"])
+            notification_action(transferred_to, "notifications-prepare")
+        # Let the original notification owner acquire its name while the
+        # package provider is still masked, then bring back the prior shell.
+        ordered = (*NOTIFICATION_UNITS, *CHANGED_UNITS) if controller else CHANGED_UNITS
+        if controller and value["services_before"].get("mako.service", {}).get("ActiveState") == "active":
+            # Its prior provider was the package unit itself; releasing our
+            # temporary mask lets systemd start that exact provider again.
+            notification_action(controller, "notifications-cleanup")
+        for unit in ordered:
+            if value["services_before"].get(unit, {}).get("ActiveState") == "active":
+                control("start", unit)
+        if controller and any(value["services_before"].get(unit, {}).get("ActiveState") == "active"
+                              for unit in NOTIFICATION_UNITS):
+            notification_action(controller, "notifications-restore-dnd")
+        if controller and previous and value["services_before"][BAR].get("ActiveState") == "active":
+            start(Path(previous["transaction"]))
+        completed = True
     except module.DeploymentError as error:
         raise SessionError(str(error)) from error
-    reload_niri(Path(release_manifest["config"]))
-    control("daemon-reload")
-    for unit, before in value["services_before"].items():
-        if before.get("ActiveState") == "active":
-            control("start", unit)
+    finally:
+        if controller and controller != transferred_to:
+            notification_action(controller, "notifications-cleanup")
+        if transferred_to and not completed:
+            notification_action(transferred_to, "notifications-cleanup")
     value["phase"] = "restored"
     atomic_json(transaction, value)
     return {"phase": "restored", "transaction": str(transaction)}
@@ -566,9 +707,10 @@ def restore(transaction, apply=False):
 
 def status(transaction):
     value = journal(transaction)
+    manifest = verify(Path(value["release"]))
     return {"phase": value["phase"], "transaction": str(transaction), "release": value["release"],
-            "backup": value["backup"], "services": services(),
-            "capabilities": verify(Path(value["release"])).get("capabilities", [])}
+            "backup": value["backup"], "services": services(changed_units(manifest)),
+            "capabilities": manifest.get("capabilities", [])}
 
 
 def main():

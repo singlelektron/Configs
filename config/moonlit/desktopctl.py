@@ -2,8 +2,8 @@
 """Reversible Moonlit entry points and a guarded, main-session shell runner.
 
 Deployment owns the manifest. This bridge never installs/enables a service and
-keeps legacy lock, idle, notification and presentation commands on their pinned
-helper. Noctalia gets filtered D-Bus; device writes require explicit capabilities.
+keeps legacy lock, idle and presentation commands on their pinned helper.
+Noctalia gets filtered D-Bus; devices and notifications require capabilities.
 """
 import fcntl
 import hashlib
@@ -22,8 +22,9 @@ import tempfile
 import time
 
 BAR_UNIT = 'dotfiles-niri-waybar.service'
-DEVICE_CAPABILITIES = frozenset(('audio', 'network', 'bluetooth', 'calendar'))
+DEVICE_CAPABILITIES = frozenset(('audio', 'network', 'bluetooth', 'calendar', 'notifications', 'caffeine'))
 KEEP_UNITS = tuple('dotfiles-niri-' + name + '.service' for name in ('mako', 'idle', 'session-events', 'polkit'))
+MAKO_UNITS = ('dotfiles-niri-mako.service', 'mako.service')
 SYSTEM_READ = {
     'org.freedesktop.NetworkManager': ('GetDevices', 'GetAllDevices', 'GetDeviceByIpIface', 'GetPermissions'),
     'org.bluez': (), 'org.freedesktop.UPower': ('EnumerateDevices', 'GetDisplayDevice', 'EnumerateKbdBacklights'),
@@ -200,6 +201,325 @@ def shell_environment(value, session_address, system_address):
     return env
 
 
+def manager_environment():
+    env = dict(os.environ)
+    env.pop('DBUS_SESSION_BUS_ADDRESS', None)
+    return env
+
+
+def notification_mask_paths(value):
+    runtime = Path(os.environ['XDG_RUNTIME_DIR'])
+    if runtime.is_symlink() or runtime.stat().st_uid != os.getuid():
+        raise DesktopError('Invalid user runtime directory')
+    return Path(value['live_root'])/'notification-mask.json', runtime/'systemd/user/mako.service'
+
+
+def notifications_cleanup(value):
+    """Also used by ExecStopPost after Niri is gone; never require its socket."""
+    marker, target = notification_mask_paths(value)
+    if not marker.exists():
+        return
+    if marker.is_symlink():
+        raise DesktopError('Invalid notification mask ownership record')
+    record = json.loads(marker.read_text())
+    if record.get('release') != value['release'] or record.get('target') != str(target):
+        raise DesktopError('Notification mask belongs to another release')
+    changed = False
+    if record.get('created'):
+        candidate = Path(record['candidate'])
+        if candidate.parent != target.parent or not candidate.name.startswith('.moonlit-mako-'):
+            raise DesktopError('Invalid notification mask candidate')
+        for path in (target, candidate):
+            try:
+                info = path.lstat()
+            except FileNotFoundError:
+                continue
+            # A changed mask belongs to whoever replaced it. Preserve it.
+            if (stat.S_ISLNK(info.st_mode) and os.readlink(path) == '/dev/null'
+                    and (info.st_dev, info.st_ino) == (record.get('device'), record.get('inode'))):
+                path.unlink()
+                changed = True
+    marker.unlink()
+    if changed:
+        run(['systemctl','--user','daemon-reload'],env=manager_environment(),timeout=6)
+
+
+def notifications_mask(value):
+    if 'notifications' not in capabilities(value):
+        raise DesktopError('Notification ownership has not been enabled')
+    marker, target = notification_mask_paths(value)
+    if marker.is_symlink():
+        raise DesktopError('Invalid notification mask ownership record')
+    if marker.exists():
+        record = json.loads(marker.read_text())
+        if (record.get('release') == value['release'] and record.get('target') == str(target)
+                and target.is_symlink() and os.readlink(target) == '/dev/null'):
+            info = target.lstat()
+            if not record.get('created') or (info.st_dev, info.st_ino) == (record.get('device'), record.get('inode')):
+                verify_notification_mask()
+                return
+        notifications_cleanup(value)
+    target.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
+    if any(path.is_symlink() for path in (target.parent, target.parent.parent)):
+        raise DesktopError('Refusing a symlinked user unit directory')
+    record = {'release':value['release'],'target':str(target),'created':False}
+    if target.is_symlink() and os.readlink(target) == '/dev/null':
+        atomic_json(marker,record)  # Already masked by the user; never unmask it.
+        run(['systemctl','--user','daemon-reload'],env=manager_environment(),timeout=6)
+        verify_notification_mask()
+        return
+    if target.exists() or target.is_symlink():
+        raise DesktopError('Refusing to replace an existing runtime mako unit')
+    # Reserve the inode before publishing its ownership record, then link it
+    # without replacement. ExecStopPost can recover any interrupted step.
+    fd, name = tempfile.mkstemp(prefix='.moonlit-mako-',dir=target.parent)
+    os.close(fd)
+    candidate = Path(name)
+    candidate.unlink()
+    candidate.symlink_to('/dev/null')
+    info = candidate.lstat()
+    record.update(created=True,candidate=str(candidate),device=info.st_dev,inode=info.st_ino)
+    atomic_json(marker,record)
+    try:
+        os.link(candidate,target,follow_symlinks=False)
+        candidate.unlink()
+        run(['systemctl','--user','daemon-reload'],env=manager_environment(),timeout=6)
+        verify_notification_mask()
+    except Exception:
+        notifications_cleanup(value)
+        raise
+
+
+def verify_notification_mask():
+    result = run(['systemctl','--user','show','mako.service','--property=LoadState','--value'],
+                 env=manager_environment(),capture_output=True,text=True,timeout=4)
+    if result.stdout.strip() != 'masked':
+        raise DesktopError('The runtime mask is shadowed by another mako unit; refusing takeover')
+
+
+def notification_owner(address):
+    base = ['busctl','--auto-start=no','--address='+address,'call','org.freedesktop.DBus',
+            '/org/freedesktop/DBus','org.freedesktop.DBus']
+    result = run([*base,'NameHasOwner','s','org.freedesktop.Notifications'],capture_output=True,text=True,timeout=3)
+    if result.stdout.strip() == 'b false':
+        return None
+    name = shlex.split(run([*base,'GetNameOwner','s','org.freedesktop.Notifications'],
+                          capture_output=True,text=True,timeout=3).stdout)
+    if len(name) != 2 or name[0] != 's' or not name[1].startswith(':'):
+        raise DesktopError('Invalid notification owner reply')
+    pid = run([*base,'GetConnectionUnixProcessID','s',name[1]],capture_output=True,text=True,timeout=3).stdout.split()
+    if len(pid) != 2 or pid[0] != 'u' or int(pid[1]) <= 0:
+        raise DesktopError('Invalid notification owner process reply')
+    return {'name':name[1],'pid':int(pid[1])}
+
+
+def notifications_prepare(value):
+    if 'notifications' not in capabilities(value):
+        raise DesktopError('Notification ownership has not been enabled')
+    require_session()
+    # Repeating session-start must preserve this exact release's live owner.
+    # Validate its process identities, proxy paths and IPC peer before trusting it.
+    try:
+        live_environment(value)
+        session = json.loads((Path(value['live_root'])/'session.json').read_text())
+        already_running = notification_status(value,session)['ready']
+    except (DesktopError,OSError,ValueError,subprocess.SubprocessError):
+        already_running = False
+    notifications_mask(value)
+    if already_running:
+        return
+    try:
+        env = manager_environment()
+        address = 'unix:path='+str(Path(os.environ['XDG_RUNTIME_DIR'])/'bus')
+        owner = notification_owner(address)
+        if owner is None:
+            return
+        pids = {}
+        for unit in MAKO_UNITS:
+            result = run(['systemctl','--user','show',unit,'--property=MainPID','--value'],
+                         env=env,capture_output=True,text=True,timeout=4)
+            pids[unit] = int(result.stdout.strip())
+        if owner['pid'] not in pids.values():
+            raise DesktopError('Another notification daemon owns this session; refusing to replace it')
+        archive = Path(value['live_root'])/'notification-archive'
+        if archive.is_symlink():
+            raise DesktopError('Refusing a symlinked notification archive')
+        archive.mkdir(mode=0o700,exist_ok=True)
+        archive.chmod(0o700)
+        destination = Path(tempfile.mkdtemp(prefix=time.strftime('%Y%m%dT%H%M%S-'),dir=archive))
+        env['DBUS_SESSION_BUS_ADDRESS'] = address
+        for command in ('list','history'):
+            result = run(['makoctl',command,'-j'],env=env,capture_output=True,text=True,timeout=5)
+            json.loads(result.stdout)  # Preserve raw JSON, but reject a failed export.
+            fd = os.open(destination/(command+'.json'),os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            with os.fdopen(fd,'w') as stream:
+                stream.write(result.stdout)
+        mode = run(['makoctl','mode'],env=env,capture_output=True,text=True,timeout=5).stdout
+        fd = os.open(destination/'mode.txt',os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(fd,'w') as stream:
+            stream.write(mode)
+        state_file = Path(value['live_root'])/'notification-state.json'
+        if not state_file.exists():
+            atomic_json(state_file,{'dnd':'do-not-disturb' in mode.split()})
+        for unit, pid in pids.items():
+            if pid:
+                run(['systemctl','--user','stop',unit],env=env,timeout=10)
+        if notification_owner(address) is not None:
+            raise DesktopError('Notification owner changed during takeover')
+    except Exception:
+        notifications_cleanup(value)
+        raise
+
+
+def save_notification_dnd(value, env=None):
+    if env is None:
+        answer = ipc(value,['notification-dnd-status']).strip()
+    else:
+        answer = run([value['binary'],'msg','notification-dnd-status'],env=env,
+                     capture_output=True,text=True,timeout=2).stdout.strip()
+    if answer not in ('on','off'):
+        raise DesktopError('Invalid notification DND state')
+    atomic_json(Path(value['live_root'])/'notification-state.json',{'dnd':answer == 'on'})
+
+
+def restore_mako_dnd(value):
+    require_session()
+    state = json.loads((Path(value['live_root'])/'notification-state.json').read_text())
+    if not isinstance(state.get('dnd'),bool):
+        raise DesktopError('Invalid notification DND recovery state')
+    env = manager_environment()
+    address = 'unix:path='+str(Path(os.environ['XDG_RUNTIME_DIR'])/'bus')
+    deadline = time.monotonic()+5
+    while True:
+        owner = notification_owner(address)
+        pids = [int(run(['systemctl','--user','show',unit,'--property=MainPID','--value'],
+                        env=env,capture_output=True,text=True,timeout=4).stdout.strip()) for unit in MAKO_UNITS]
+        if owner and owner['pid'] in pids:
+            break
+        if owner or time.monotonic() >= deadline:
+            raise DesktopError('Refusing DND recovery on an unrelated or absent notification owner')
+        time.sleep(.05)
+    env['DBUS_SESSION_BUS_ADDRESS'] = address
+    run(['makoctl','mode','-a' if state['dnd'] else '-r','do-not-disturb'],env=env,timeout=5)
+
+
+def notification_status(value, session):
+    if 'notifications' not in capabilities(value):
+        return None
+    address = 'unix:path='+str(Path(os.environ['XDG_RUNTIME_DIR'])/'bus')
+    try:
+        owner = notification_owner(address)
+        if not owner or owner['pid'] != session['session_proxy']['pid']:
+            return {'ready':False,'reason':'Noctalia does not own the notification service'}
+        info = run(['busctl','--auto-start=no','--address='+address,'call',owner['name'],
+                    '/org/freedesktop/Notifications','org.freedesktop.Notifications','GetServerInformation'],
+                   capture_output=True,text=True,timeout=3)
+        fields = shlex.split(info.stdout)
+        ready = len(fields) == 5 and fields[:3] == ['ssss','noctalia','noctalia-dev']
+        return {'ready':ready,'owner_pid':owner['pid'],'server':fields[1] if len(fields)>1 else ''}
+    except (DesktopError,OSError,ValueError,subprocess.SubprocessError):
+        return {'ready':False,'reason':'Notification owner validation failed'}
+
+
+def presentation_lock():
+    root = Path(os.environ['XDG_RUNTIME_DIR'])/'dotfiles-niri'
+    if root.is_symlink():
+        raise DesktopError('Refusing a symlinked presentation directory')
+    root.mkdir(mode=0o700,exist_ok=True)
+    fd = os.open(root/'moonlit-presentation.lock',os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    try:
+        fcntl.flock(fd,fcntl.LOCK_EX)
+        return os.fdopen(fd,'w')
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def release_presentation(value):
+    """Caller holds the flag lock. Recover only our reserved inode and idle."""
+    marker = Path(value['live_root'])/'presentation-owner.json'
+    flag = Path(os.environ['XDG_RUNTIME_DIR'])/'dotfiles-niri/presentation'
+    if not marker.exists():
+        return
+    if marker.is_symlink():
+        raise DesktopError('Invalid presentation ownership record')
+    record = json.loads(marker.read_text())
+    candidate = Path(record['candidate'])
+    if (record.get('release') != value['release'] or record.get('target') != str(flag)
+            or candidate.parent != flag.parent or not candidate.name.startswith('.moonlit-presentation-')):
+        raise DesktopError('Invalid presentation ownership record')
+    def owned(path):
+        try:
+            info = path.lstat()
+            return stat.S_ISREG(info.st_mode) and (info.st_dev,info.st_ino) == (record.get('device'),record.get('inode'))
+        except FileNotFoundError:
+            return False
+    flag_owned, pending = owned(flag), owned(candidate)
+    # An interrupted stop before publication is recoverable. A replaced or
+    # externally removed published flag no longer authorizes starting idle.
+    if (flag_owned or (pending and not flag.exists() and not flag.is_symlink())) and alive(record.get('niri')):
+        pid = run(['systemctl','--user','show','niri.service','--property=MainPID','--value'],
+                  env=manager_environment(),capture_output=True,text=True,timeout=4).stdout.strip()
+        if pid == str(record['niri']['pid']):
+            run(['systemctl','--user','start','dotfiles-niri-idle.service'],env=manager_environment(),timeout=8)
+    for path in (flag,candidate):
+        if owned(path): path.unlink()
+    marker.unlink()
+
+
+def presentation_cleanup(value):
+    # ExecStopPost may run after the compositor/socket disappeared.
+    with presentation_lock():
+        release_presentation(value)
+
+
+def presentation(value, action):
+    if action not in ('status','on','off','toggle'):
+        raise DesktopError('Unknown keep-awake action')
+    env = manager_environment()
+    env.pop('DBUS_SYSTEM_BUS_ADDRESS',None)
+    legacy = ['/usr/bin/python3',value['legacy_desktopctl'],'presentation']
+    if action == 'status':
+        return run([*legacy,'status'],env=env,timeout=5).returncode
+    niri = require_session()
+    flag = Path(os.environ['XDG_RUNTIME_DIR'])/'dotfiles-niri/presentation'
+    marker = Path(value['live_root'])/'presentation-owner.json'
+    with presentation_lock():
+        if flag.is_symlink():
+            raise DesktopError('Refusing a symlinked presentation flag')
+        enabled = flag.exists()
+        desired = not enabled if action == 'toggle' else action == 'on'
+        if not desired:
+            release_presentation(value)
+            if flag.exists():  # Explicit user action keeps legacy flag semantics.
+                run([*legacy,'off'],env=env,timeout=10)
+        elif not enabled:
+            release_presentation(value)
+            state = run(['systemctl','--user','show','dotfiles-niri-idle.service','--property=ActiveState','--value'],
+                        env=env,capture_output=True,text=True,timeout=4).stdout.strip()
+            if state != 'active':
+                raise DesktopError('Keep awake requires the existing idle service to be active')
+            fd,name = tempfile.mkstemp(prefix='.moonlit-presentation-',dir=flag.parent)
+            candidate = Path(name)
+            with os.fdopen(fd,'w') as stream: stream.write('on\n')
+            info = candidate.stat()
+            atomic_json(marker,{'release':value['release'],'target':str(flag),'candidate':str(candidate),
+                                'device':info.st_dev,'inode':info.st_ino,'niri':niri})
+            try:
+                run(['systemctl','--user','stop','dotfiles-niri-idle.service'],env=env,timeout=8)
+                os.link(candidate,flag,follow_symlinks=False)
+                candidate.unlink()
+                run(['niri','msg','action','power-on-monitors'],env=env,timeout=5)
+            except BaseException:
+                release_presentation(value)
+                raise
+    try:
+        ipc(value,['plugin','dotfiles/moonlit-controls:awake','all','refresh'])
+    except (DesktopError,OSError,ValueError,subprocess.SubprocessError):
+        pass  # The backend succeeded; panel reload also reads the real flag.
+    return 0
+
+
 def fixed_helper(value):
     return Path(value['release'])/'managed/niri/desktopctl.py'
 
@@ -259,14 +579,15 @@ def proxy_commands(root, session_address, system_address, allowed=frozenset()):
                '--own=dev.noctalia.Mpris', '--own=dev.noctalia.Debug', '--see=org.mpris.MediaPlayer2.*',
                '--broadcast=org.mpris.MediaPlayer2.*=*', '--see=org.freedesktop.Notifications',
                '--see=org.freedesktop.ScreenSaver']
+    if 'notifications' in allowed:
+        session.append('--own=org.freedesktop.Notifications')
     session += ['--call=org.mpris.MediaPlayer2.*=' + method + '@/org/mpris/MediaPlayer2' for method in READ_INTERFACES[:2]]
     # Native repeat/shuffle controls write player properties, not PipeWire or
     # system devices. Keep that permission confined to the standard MPRIS path.
     session += ['--call=org.mpris.MediaPlayer2.*=org.freedesktop.DBus.Properties.Set@/org/mpris/MediaPlayer2']
     session += ['--call=org.mpris.MediaPlayer2.*=org.mpris.MediaPlayer2.Player.' + method + '@/org/mpris/MediaPlayer2'
                 for method in ('Play', 'Pause', 'PlayPause', 'Stop', 'Next', 'Previous', 'Seek', 'SetPosition')]
-    # No ownership of Notifications, ScreenSaver or StatusNotifierWatcher. The
-    # existing services remain their owners. Native text-input uses Wayland.
+    # ScreenSaver and StatusNotifierWatcher remain outside this shell's scope.
     return system, session
 
 
@@ -345,6 +666,8 @@ def shell(value):
     children, pidfds = [], []
     calendar_child = None
     published_session = False
+    notifications_prepared = False
+    presentation_started = False
     def interrupted(_number, _frame):
         raise InterruptedError('Moonlit runner stopped')
     previous = {number: signal.signal(number, interrupted) for number in (signal.SIGTERM, signal.SIGINT)}
@@ -363,6 +686,12 @@ def shell(value):
                      'org.freedesktop.DBus', 'NameHasOwner', 's', 'dev.noctalia.Mpris'], capture_output=True, text=True, timeout=4)
         if owner.stdout.strip() != 'b false':
             raise DesktopError('Another Noctalia media owner is already running')
+        if 'caffeine' in capabilities(value):
+            presentation_cleanup(value)
+            presentation_started = True
+        if 'notifications' in capabilities(value):
+            notifications_prepare(value)
+            notifications_prepared = True
         records = {'runner': identity(os.getpid()), 'niri': niri}
         for name, command in zip(('system_proxy', 'session_proxy'),
                                  proxy_commands(root, original_session, original_system, capabilities(value))):
@@ -404,6 +733,20 @@ def shell(value):
                     'WAYLAND_DISPLAY':os.environ['WAYLAND_DISPLAY'],
                     'DBUS_SESSION_BUS_ADDRESS':session_address,'DBUS_SYSTEM_BUS_ADDRESS':system_address})
         published_session = True
+        if 'notifications' in capabilities(value):
+            state_file = root/'notification-state.json'
+            dnd = json.loads(state_file.read_text()).get('dnd',False) if state_file.exists() else False
+            if not isinstance(dnd,bool):
+                raise DesktopError('Invalid notification DND state')
+            deadline = time.monotonic()+8
+            while True:
+                try:
+                    ipc(value,['notification-dnd-set','on' if dnd else 'off'])
+                    break
+                except (DesktopError,OSError,subprocess.SubprocessError):
+                    if time.monotonic() >= deadline or child.poll() is not None:
+                        raise DesktopError('Noctalia could not restore notification DND')
+                    time.sleep(.05)
         pidfds=[os.pidfd_open(p.pid) for p in children]
         calendar_fd = pidfds[children.index(calendar_child)] if calendar_child else None
         shell_fd = pidfds[-1]
@@ -425,8 +768,23 @@ def shell(value):
     finally:
         for number, handler in previous.items():
             signal.signal(number, signal.SIG_IGN)
+        if published_session and 'notifications' in capabilities(value):
+            try:
+                save_notification_dnd(value,env)
+            except (DesktopError,OSError,ValueError,subprocess.SubprocessError):
+                pass  # Retain the last validated state if the shell already died.
         for child in reversed(children):
             stop_process(child)
+        if notifications_prepared:
+            try:
+                notifications_cleanup(value)
+            except (DesktopError,OSError,ValueError,subprocess.SubprocessError) as error:
+                print('Moonlit notification mask cleanup needs attention: '+str(error),file=sys.stderr)
+        if presentation_started:
+            try:
+                presentation_cleanup(value)
+            except (DesktopError,OSError,ValueError,subprocess.SubprocessError) as error:
+                print('Moonlit presentation cleanup needs attention: '+str(error),file=sys.stderr)
         if published_session:
             (root/'session.json').unlink(missing_ok=True)
         for fd in pidfds:
@@ -473,10 +831,47 @@ def dispatch(argv, value):
         return host_launch(argv[2:])
     if argv[0]=='terminal':
         return terminal_launch(value,argv[1:])
+    if argv==['notifications-cleanup']:
+        notifications_cleanup(value)
+        return 0
+    if argv==['presentation-cleanup']:
+        presentation_cleanup(value)
+        return 0
+    if argv[0]=='presentation' and 'caffeine' in capabilities(value):
+        if len(argv) != 2:
+            raise DesktopError('Provide one keep-awake action')
+        return presentation(value,argv[1])
+    if argv==['notifications-mask']:
+        require_session()
+        notifications_mask(value)
+        return 0
+    if argv==['notifications-prepare']:
+        notifications_prepare(value)
+        return 0
+    if argv==['notifications-restore-dnd']:
+        restore_mako_dnd(value)
+        return 0
+    if argv==['notifications','toggle']:
+        if 'notifications' in capabilities(value):
+            ipc(value,['notification-dnd-toggle'])
+            save_notification_dnd(value)
+            return 0
+        require_session()
+        return run(['makoctl','mode','-t','do-not-disturb'],env=manager_environment(),timeout=5).returncode
     if argv==['session-start']:
         require_session()
+        if 'notifications' in capabilities(value):
+            notifications_prepare(value)
         run(['systemctl','--user','daemon-reload'])
-        run(['systemctl','--user','start',BAR_UNIT,*KEEP_UNITS])
+        kept = [unit for unit in KEEP_UNITS if 'notifications' not in capabilities(value) or unit not in MAKO_UNITS]
+        if 'caffeine' in capabilities(value) and (Path(os.environ['XDG_RUNTIME_DIR'])/'dotfiles-niri/presentation').exists():
+            try:
+                live_environment(value)
+            except (DesktopError,OSError,ValueError,subprocess.SubprocessError):
+                pass  # A new runner clears its old lease; normal idle startup follows.
+            else:
+                kept.remove('dotfiles-niri-idle.service')
+        run(['systemctl','--user','start',BAR_UNIT,*kept])
         return 0
     if argv==['status']:
         state=json.loads(ipc(value,['status']))
@@ -484,9 +879,11 @@ def dispatch(argv, value):
             raise DesktopError('Noctalia returned invalid status')
         session=json.loads((Path(value['live_root'])/'session.json').read_text())
         calendar=calendar_status(value,session)
+        notifications=notification_status(value,session)
         processes={key:session[key] for key in ('runner','niri','shell','system_proxy','session_proxy','calendar_bridge') if key in session}
-        print(json.dumps({'ready':calendar is None or calendar['ready'],'phase':value['phase'],
-              'capabilities':sorted(capabilities(value)),'processes':processes,'calendar':calendar,'noctalia':state}))
+        print(json.dumps({'ready':(calendar is None or calendar['ready']) and (notifications is None or notifications['ready']),
+              'phase':value['phase'],'capabilities':sorted(capabilities(value)),'processes':processes,
+              'calendar':calendar,'notifications':notifications,'noctalia':state}))
         return 0
     mapping={('applications',):('panel-toggle','launcher'),('launcher',):('panel-toggle','launcher'),
              ('menu',):('panel-toggle','control-center'),('panel',):('panel-toggle','control-center'),

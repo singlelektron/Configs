@@ -133,11 +133,11 @@ class BridgeTests(unittest.TestCase):
 
     def test_manifest_capabilities_are_opt_in_and_reject_unknown_or_malformed_lists(self):
         self.assertEqual(m.capabilities(m.read_manifest(self.link)), frozenset())
-        for selected in (['audio'], ['network','bluetooth'], ['audio','bluetooth','network']):
+        for selected in (['audio'], ['network','bluetooth'], ['audio','bluetooth','network'], ['notifications'], ['caffeine']):
             self.value['capabilities']=selected
             self.write_manifest()
             self.assertEqual(m.capabilities(m.read_manifest(self.link)), frozenset(selected))
-        for selected in ('audio', None, ['notifications'], ['session'], ['audio','audio'], [1], [{}]):
+        for selected in ('audio', None, ['session'], ['audio','audio'], [1], [{}]):
             self.value['capabilities']=selected
             self.write_manifest()
             with self.subTest(selected=selected),self.assertRaisesRegex(m.DesktopError,'capabilities'):
@@ -371,6 +371,249 @@ class BridgeTests(unittest.TestCase):
             with self.assertRaisesRegex(m.DesktopError,'media owner'):m.shell(self.value)
 
 
+    def test_notifications_capability_only_grants_its_bus_name(self):
+        plain=m.proxy_commands(self.live,'session','system')
+        system,session=m.proxy_commands(self.live,'session','system',['notifications'])
+        self.assertEqual(system,plain[0])
+        self.assertEqual(set(session)-set(plain[1]),{'--own=org.freedesktop.Notifications'})
+        self.assertNotIn('--own=org.freedesktop.ScreenSaver',session)
+
+    def test_owned_notification_mask_is_idempotent_and_cleanup_needs_no_session(self):
+        self.value['capabilities']=['notifications']
+        with (mock.patch.object(m,'run',return_value=subprocess.CompletedProcess([],0,'masked\n')) as run,
+              mock.patch.object(m,'require_session',side_effect=AssertionError('cleanup queried Niri'))):
+            m.notifications_mask(self.value)
+            marker,target=m.notification_mask_paths(self.value)
+            inode=target.lstat().st_ino
+            self.assertEqual(os.readlink(target),'/dev/null')
+            m.notifications_mask(self.value)
+            self.assertEqual(target.lstat().st_ino,inode)
+            m.dispatch(['notifications-cleanup'],self.value)
+            m.dispatch(['notifications-cleanup'],self.value)
+        self.assertFalse(marker.exists());self.assertFalse(target.is_symlink())
+        self.assertTrue(all('DBUS_SESSION_BUS_ADDRESS' not in item.kwargs['env'] for item in run.call_args_list))
+
+    def test_preexisting_and_replaced_masks_are_never_unmasked(self):
+        self.value['capabilities']=['notifications']
+        marker,target=m.notification_mask_paths(self.value)
+        target.parent.mkdir(parents=True);target.symlink_to('/dev/null')
+        with mock.patch.object(m,'run',return_value=subprocess.CompletedProcess([],0,'masked\n')):
+            m.notifications_mask(self.value);m.notifications_cleanup(self.value)
+            self.assertTrue(target.is_symlink())
+            target.unlink();m.notifications_mask(self.value)
+            # Keep the owned inode alive so replacement cannot reuse it.
+            old=target.parent/'old-mask';target.rename(old);target.symlink_to('/dev/null')
+            m.notifications_cleanup(self.value)
+            self.assertTrue(target.is_symlink());self.assertTrue(old.is_symlink())
+        self.assertFalse(marker.exists())
+
+    def test_mask_refuses_unknown_unit_and_recovers_interrupted_publication(self):
+        self.value['capabilities']=['notifications']
+        marker,target=m.notification_mask_paths(self.value)
+        target.parent.mkdir(parents=True);target.write_text('unrelated unit')
+        with mock.patch.object(m,'run') as run:
+            with self.assertRaisesRegex(m.DesktopError,'existing runtime'):m.notifications_mask(self.value)
+            run.assert_not_called()
+        self.assertEqual(target.read_text(),'unrelated unit');target.unlink()
+        with mock.patch.object(m.os,'link',side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):m.notifications_mask(self.value)
+        candidate=Path(json.loads(marker.read_text())['candidate'])
+        self.assertTrue(candidate.is_symlink())
+        with mock.patch.object(m,'run'):
+            m.notifications_cleanup(self.value)
+        self.assertFalse(candidate.is_symlink());self.assertFalse(marker.exists())
+
+    def test_shadowed_runtime_mask_fails_before_daemon_takeover(self):
+        self.value['capabilities']=['notifications']
+        with mock.patch.object(m,'run',return_value=subprocess.CompletedProcess([],0,'loaded\n')):
+            with self.assertRaisesRegex(m.DesktopError,'shadowed'):m.notifications_mask(self.value)
+        marker,target=m.notification_mask_paths(self.value)
+        self.assertFalse(marker.exists());self.assertFalse(target.is_symlink())
+
+    def test_notification_prepare_archives_private_raw_json_and_preserves_native_dnd(self):
+        self.value['capabilities']=['notifications']
+        state=self.live/'notification-state.json';state.write_text('{"dnd":true}')
+        calls=[]
+        def run(argv,**kwargs):
+            calls.append((argv,kwargs))
+            if argv[:2]==['makoctl','mode']:answer='default\n'
+            elif argv[0]=='makoctl':answer='{"synthetic": ["preserve exact fixture"]}\n'
+            elif '--property=MainPID' in argv:answer='101\n' if m.MAKO_UNITS[0] in argv else '0\n'
+            else:answer=''
+            return subprocess.CompletedProcess(argv,0,answer)
+        with (mock.patch.object(m,'require_session'),mock.patch.object(m,'notifications_mask'),
+              mock.patch.object(m,'live_environment',side_effect=FileNotFoundError),
+              mock.patch.object(m,'notification_owner',side_effect=[{'name':':1.2','pid':101},None]),
+              mock.patch.object(m,'run',side_effect=run)):
+            m.notifications_prepare(self.value)
+        archive=list((self.live/'notification-archive').iterdir())[0]
+        self.assertEqual(archive.stat().st_mode & 0o777,0o700)
+        for name in ('list.json','history.json','mode.txt'):
+            self.assertEqual((archive/name).stat().st_mode & 0o777,0o600)
+        self.assertEqual((archive/'history.json').read_text(),'{"synthetic": ["preserve exact fixture"]}\n')
+        self.assertTrue(json.loads(state.read_text())['dnd'],'fallback mako must not replace the latest native DND')
+        self.assertEqual([argv for argv,_ in calls if 'stop' in argv],
+                         [['systemctl','--user','stop',m.MAKO_UNITS[0]]])
+        state.unlink()
+        with (mock.patch.object(m,'require_session'),mock.patch.object(m,'notifications_mask'),
+              mock.patch.object(m,'live_environment',side_effect=FileNotFoundError),
+              mock.patch.object(m,'notification_owner',side_effect=[{'name':':1.2','pid':101},None]),
+              mock.patch.object(m,'run',side_effect=run)):
+            m.notifications_prepare(self.value)
+        self.assertFalse(json.loads(state.read_text())['dnd'])
+
+    def test_notification_prepare_unknown_owner_refuses_without_stopping_it(self):
+        self.value['capabilities']=['notifications']
+        with (mock.patch.object(m,'require_session'),mock.patch.object(m,'notifications_mask'),
+              mock.patch.object(m,'live_environment',side_effect=FileNotFoundError),
+              mock.patch.object(m,'notification_owner',return_value={'name':':1.2','pid':900}),
+              mock.patch.object(m,'run',return_value=subprocess.CompletedProcess([],0,'101\n')) as run,
+              mock.patch.object(m,'notifications_cleanup') as cleanup):
+            with self.assertRaisesRegex(m.DesktopError,'Another notification'):m.notifications_prepare(self.value)
+            cleanup.assert_called_once_with(self.value)
+        self.assertFalse(any('stop' in item.args[0] for item in run.call_args_list))
+        self.assertFalse((self.live/'notification-archive').exists())
+
+    def test_repeated_start_accepts_only_validated_same_release_owner(self):
+        self.value['capabilities']=['notifications'];self.session()
+        with (mock.patch.object(m,'require_session'),mock.patch.object(m,'live_environment') as live,
+              mock.patch.object(m,'notification_status',return_value={'ready':True}),
+              mock.patch.object(m,'notifications_mask') as mask,mock.patch.object(m,'notification_owner') as owner):
+            m.notifications_prepare(self.value)
+            live.assert_called_once_with(self.value);mask.assert_called_once_with(self.value)
+            owner.assert_not_called()
+        with (mock.patch.object(m,'require_session'),mock.patch.object(m,'notifications_prepare'),
+              mock.patch.object(m,'run') as run):
+            m.dispatch(['session-start'],self.value)
+        self.assertNotIn(m.MAKO_UNITS[0],run.call_args_list[-1].args[0])
+        self.assertIn('dotfiles-niri-idle.service',run.call_args_list[-1].args[0])
+
+    def test_notification_readiness_checks_proxy_owner_and_actual_server(self):
+        self.value['capabilities']=['notifications'];session=self.session()
+        with (mock.patch.object(m,'notification_owner',return_value={'name':':1.2','pid':session['shell']['pid']}),
+              mock.patch.object(m,'run') as run):
+            self.assertFalse(m.notification_status(self.value,session)['ready']);run.assert_not_called()
+        with mock.patch.object(m,'notification_owner',return_value={'name':':1.2','pid':session['session_proxy']['pid']}):
+            for answer,ready in [('ssss "noctalia" "noctalia-dev" "5.2.1" "1.2"',True),
+                                 ('ssss "other" "vendor" "1" "1.2"',False)]:
+                with mock.patch.object(m,'run',return_value=subprocess.CompletedProcess([],0,answer)) as run:
+                    self.assertEqual(m.notification_status(self.value,session)['ready'],ready)
+                    self.assertIn('--auto-start=no',run.call_args.args[0]);self.assertIn(':1.2',run.call_args.args[0])
+
+    def test_notification_toggle_persists_native_dnd_and_restore_waits_for_known_mako(self):
+        self.value['capabilities']=['notifications']
+        with mock.patch.object(m,'ipc',side_effect=['','on\n']) as ipc:
+            m.dispatch(['notifications','toggle'],self.value)
+        self.assertTrue(json.loads((self.live/'notification-state.json').read_text())['dnd'])
+        with (mock.patch.object(m,'require_session'),
+              mock.patch.object(m,'notification_owner',side_effect=[None,{'name':':1.8','pid':101}]),
+              mock.patch.object(m,'run',return_value=subprocess.CompletedProcess([],0,'101\n')) as run,
+              mock.patch.object(m.time,'sleep') as sleep):
+            m.restore_mako_dnd(self.value)
+        sleep.assert_called_once_with(.05)
+        self.assertEqual(run.call_args.args[0],['makoctl','mode','-a','do-not-disturb'])
+
+
+    def presentation_run(self,argv,**kwargs):
+        answer='active\n' if '--property=ActiveState' in argv else '100\n'
+        return subprocess.CompletedProcess(argv,0,answer)
+
+    def test_presentation_on_off_and_cleanup_restore_only_existing_idle_owner(self):
+        self.value['capabilities']=['caffeine']
+        flag=self.root/'dotfiles-niri/presentation'
+        with (mock.patch.object(m,'require_session',return_value=self.niri),
+              mock.patch.object(m,'alive',return_value=True),mock.patch.object(m,'ipc') as ipc,
+              mock.patch.object(m,'run',side_effect=self.presentation_run) as run):
+            m.dispatch(['presentation','on'],self.value)
+            inode=flag.stat().st_ino
+            m.dispatch(['presentation','on'],self.value)
+            self.assertEqual(flag.stat().st_ino,inode)
+            m.dispatch(['presentation','off'],self.value)
+            m.dispatch(['presentation-cleanup'],self.value)
+        self.assertFalse(flag.exists());self.assertFalse((self.live/'presentation-owner.json').exists())
+        self.assertEqual([item.args[0] for item in run.call_args_list if 'stop' in item.args[0]],
+                         [['systemctl','--user','stop','dotfiles-niri-idle.service']])
+        self.assertEqual([item.args[0] for item in run.call_args_list if 'start' in item.args[0]],
+                         [['systemctl','--user','start','dotfiles-niri-idle.service']])
+        self.assertFalse(any('session-events' in str(item) or 'lock.service' in str(item) for item in run.call_args_list))
+        self.assertTrue(all('DBUS_SESSION_BUS_ADDRESS' not in item.kwargs['env'] for item in run.call_args_list))
+        ipc.assert_called_with(self.value,['plugin','dotfiles/moonlit-controls:awake','all','refresh'])
+
+    def test_presentation_initially_inactive_refuses_before_mutation_and_preserves_external_flag(self):
+        self.value['capabilities']=['caffeine']
+        flag=self.root/'dotfiles-niri/presentation'
+        with (mock.patch.object(m,'require_session',return_value=self.niri),
+              mock.patch.object(m,'run',return_value=subprocess.CompletedProcess([],0,'inactive\n')) as run):
+            with self.assertRaisesRegex(m.DesktopError,'idle service to be active'):
+                m.presentation(self.value,'on')
+        self.assertFalse(flag.exists());self.assertFalse(any('stop' in item.args[0] for item in run.call_args_list))
+        flag.write_text('on\n')
+        with mock.patch.object(m,'require_session',side_effect=AssertionError('cleanup queried session')):
+            m.presentation_cleanup(self.value)
+        self.assertTrue(flag.exists())
+        with (mock.patch.object(m,'require_session',return_value=self.niri),mock.patch.object(m,'ipc'),
+              mock.patch.object(m,'run',side_effect=self.presentation_run) as run):
+            m.presentation(self.value,'off')
+        self.assertEqual(run.call_args.args[0],['/usr/bin/python3',str(self.legacy),'presentation','off'])
+
+    def test_presentation_cleanup_replaced_inode_does_not_restart_idle_or_remove_new_flag(self):
+        self.value['capabilities']=['caffeine'];flag=self.root/'dotfiles-niri/presentation'
+        with (mock.patch.object(m,'require_session',return_value=self.niri),mock.patch.object(m,'ipc'),
+              mock.patch.object(m,'run',side_effect=self.presentation_run)):
+            m.presentation(self.value,'on')
+        flag.rename(flag.with_name('previous-owned'));flag.write_text('external')
+        with mock.patch.object(m,'alive',return_value=True),mock.patch.object(m,'run') as run:
+            m.presentation_cleanup(self.value)
+        run.assert_not_called();self.assertEqual(flag.read_text(),'external')
+        self.assertFalse((self.live/'presentation-owner.json').exists())
+
+    def test_presentation_cleanup_after_session_ended_only_removes_own_flag(self):
+        self.value['capabilities']=['caffeine'];flag=self.root/'dotfiles-niri/presentation'
+        with (mock.patch.object(m,'require_session',return_value=self.niri),mock.patch.object(m,'ipc'),
+              mock.patch.object(m,'run',side_effect=self.presentation_run)):
+            m.presentation(self.value,'toggle')
+        with (mock.patch.object(m,'require_session',side_effect=AssertionError('no live session')),
+              mock.patch.object(m,'alive',return_value=False),mock.patch.object(m,'run') as run):
+            m.dispatch(['presentation-cleanup'],self.value)
+            m.dispatch(['presentation-cleanup'],self.value)
+        self.assertFalse(flag.exists());run.assert_not_called()
+
+    def test_presentation_failed_publication_restores_idle_and_removes_reserved_inode(self):
+        self.value['capabilities']=['caffeine']
+        with (mock.patch.object(m,'require_session',return_value=self.niri),mock.patch.object(m,'alive',return_value=True),
+              mock.patch.object(m,'run',side_effect=self.presentation_run) as run,
+              mock.patch.object(m.os,'link',side_effect=OSError('synthetic publication failure'))):
+            with self.assertRaisesRegex(OSError,'publication failure'):m.presentation(self.value,'on')
+        self.assertIn(['systemctl','--user','start','dotfiles-niri-idle.service'],[item.args[0] for item in run.call_args_list])
+        self.assertFalse((self.live/'presentation-owner.json').exists())
+        self.assertFalse(list((self.root/'dotfiles-niri').glob('.moonlit-presentation-*')))
+
+    def test_presentation_interrupted_stop_recovers_pending_record_and_ipc_failure_is_nonfatal(self):
+        self.value['capabilities']=['caffeine'];flag=self.root/'dotfiles-niri/presentation'
+        with (mock.patch.object(m,'require_session',return_value=self.niri),
+              mock.patch.object(m,'run',side_effect=self.presentation_run),
+              mock.patch.object(m,'release_presentation',side_effect=[None,KeyboardInterrupt]),
+              mock.patch.object(m.os,'link',side_effect=KeyboardInterrupt)):
+            with self.assertRaises(KeyboardInterrupt):m.presentation(self.value,'on')
+        self.assertFalse(flag.exists());self.assertTrue((self.live/'presentation-owner.json').exists())
+        with mock.patch.object(m,'alive',return_value=True),mock.patch.object(m,'run',side_effect=self.presentation_run) as run:
+            m.presentation_cleanup(self.value)
+        self.assertIn(['systemctl','--user','start','dotfiles-niri-idle.service'],[item.args[0] for item in run.call_args_list])
+        with (mock.patch.object(m,'require_session',return_value=self.niri),
+              mock.patch.object(m,'run',side_effect=self.presentation_run),
+              mock.patch.object(m,'ipc',side_effect=m.DesktopError('not running'))):
+            self.assertEqual(m.presentation(self.value,'on'),0)
+        self.assertTrue(flag.exists())
+
+    def test_repeated_session_start_preserves_active_presentation(self):
+        self.value['capabilities']=['caffeine'];flag=self.root/'dotfiles-niri/presentation'
+        flag.parent.mkdir();flag.write_text('on\n')
+        with (mock.patch.object(m,'require_session'),mock.patch.object(m,'live_environment'),mock.patch.object(m,'run') as run):
+            m.dispatch(['session-start'],self.value)
+        self.assertNotIn('dotfiles-niri-idle.service',run.call_args.args[0])
+        self.assertIn('dotfiles-niri-session-events.service',run.call_args.args[0])
+
+
 @unittest.skipUnless(os.environ.get('MOONLIT_TEST_PRIVATE_BUS')=='1','opt-in isolated D-Bus policy fixture')
 class PrivateBusTests(unittest.TestCase):
     def test_proxies_block_device_writes_and_preserve_only_native_ownership(self):
@@ -404,11 +647,50 @@ class PrivateBusTests(unittest.TestCase):
                                 self.assertTrue(any(word in reply.stderr.lower() for word in ('denied','serviceunknown')),reply.stderr)
                         self.check_media_transport(address,proxy_address,children)
                 self.check_device_capabilities(root,address,children)
+                self.check_notification_capability(root,address,children)
             finally:
                 for child in reversed(children):
                     m.stop_process(child)
                     if child.stdout:child.stdout.close()
                     if child.stderr:child.stderr.close()
+
+    def check_notification_capability(self,root,address,children):
+        profile=root/'notifications';profile.mkdir()
+        command=m.proxy_commands(profile,address,address,['notifications'])[1]
+        proxy=subprocess.Popen(command,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL);children.append(proxy)
+        path=profile/'session-bus';deadline=time.monotonic()+3
+        while not path.exists() and proxy.poll() is None and time.monotonic()<deadline:time.sleep(.025)
+        self.assertTrue(path.exists())
+        provider='''import sys
+from gi.repository import Gio,GLib
+connection=Gio.DBusConnection.new_for_address_sync(sys.argv[1],Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT|Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,None,None)
+reply=connection.call_sync('org.freedesktop.DBus','/org/freedesktop/DBus','org.freedesktop.DBus','RequestName',GLib.Variant('(su)',('org.freedesktop.Notifications',4)),None,Gio.DBusCallFlags.NONE,2000,None)
+assert reply.unpack()==(1,),reply
+xml='<node><interface name="org.freedesktop.Notifications"><method name="GetServerInformation"><arg type="s" direction="out"/><arg type="s" direction="out"/><arg type="s" direction="out"/><arg type="s" direction="out"/></method></interface></node>'
+def method(conn,sender,path,interface,name,args,invocation):invocation.return_value(GLib.Variant('(ssss)',('noctalia','noctalia-dev','5.2.1','1.2')))
+connection.register_object('/org/freedesktop/Notifications',Gio.DBusNodeInfo.new_for_xml(xml).interfaces[0],method,None,None)
+print('ready',flush=True)
+GLib.MainLoop().run()
+'''
+        proc=subprocess.Popen([sys.executable,'-c',provider,'unix:path='+str(path)],stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        children.append(proc)
+        import select
+        self.assertTrue(select.select([proc.stdout],[],[],4)[0],'notification fixture did not start')
+        self.assertEqual(proc.stdout.readline().strip(),'ready')
+        owner=m.notification_owner(address)
+        self.assertEqual(owner['pid'],proxy.pid,'host bus sees the authenticated proxy, not its provider')
+        self.assertNotEqual(owner['pid'],proc.pid)
+        bus_path=address.split('unix:path=',1)[1].split(',',1)[0]
+        (root/'bus').symlink_to(bus_path)
+        with mock.patch.dict(os.environ,{'XDG_RUNTIME_DIR':str(root)}):
+            state=m.notification_status({'capabilities':['notifications']},{'session_proxy':{'pid':proxy.pid}})
+        self.assertTrue(state['ready'],state)
+        reply=subprocess.run(['busctl','--address=unix:path='+str(path),'call','org.freedesktop.DBus','/org/freedesktop/DBus','org.freedesktop.DBus','RequestName','su','org.freedesktop.ScreenSaver','4'],capture_output=True,text=True,timeout=4)
+        self.assertNotEqual(reply.returncode,0,'notifications must not grant screen lock ownership')
+        m.stop_process(proc)
+        deadline=time.monotonic()+3
+        while m.notification_owner(address) and time.monotonic()<deadline:time.sleep(.025)
+        self.assertIsNone(m.notification_owner(address))
 
     def check_device_capabilities(self,root,address,children):
         # Distinct service connections are essential: real NM and BlueZ each

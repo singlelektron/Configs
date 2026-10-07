@@ -35,6 +35,8 @@ class SessionTests(unittest.TestCase):
         self.niri = '''binds {
     Mod+D { spawn "legacy-launcher"; }
     Mod+H { focus-column-left; }
+    Mod+Alt+N hotkey-overlay-title="Toggle notifications" { spawn "makoctl" "mode" "-t" "do-not-disturb"; }
+    Mod+Alt+P { spawn "presentation-fixture"; }
     XF86AudioPlay allow-when-locked=true { spawn "playerctl" "play-pause"; }
     XF86AudioNext allow-when-locked=true { spawn "playerctl" "next"; }
     XF86AudioPrev allow-when-locked=true { spawn "playerctl" "previous"; }
@@ -69,6 +71,7 @@ include optional=true "../dotfiles-local/niri.kdl"
             "config/moonlit/nvim-theme.lua": '-- isolated theme\n',
             "config/moonlit/palettes/MoonlitBloom.json": '{}\n',
             "config/moonlit/plugins/test/plugin.toml": 'name="test"\n',
+            "config/moonlit/plugins/moonlit-controls/plugin.toml": 'name="controls"\n',
             "config/kitty/theme.conf": "# existing terminal theme\n",
         }.items():
             self.write(self.repo, name, text)
@@ -280,7 +283,7 @@ include optional=true "../dotfiles-local/niri.kdl"
 
     def test_capabilities_are_explicit_and_only_one_new_permission_is_allowed(self):
         with self.assertRaisesRegex(session.SessionError, "Unsupported capability"):
-            self.prepare(capabilities=["notifications"])
+            self.prepare(capabilities=["not-real-capability"])
         with self.assertRaisesRegex(session.SessionError, "only one new"):
             self.prepare(capabilities=["audio", "network"])
         self.assertFalse(self.release.exists())
@@ -397,6 +400,135 @@ include optional=true "../dotfiles-local/niri.kdl"
         self.assertEqual(session.journal(transaction)["phase"], "restored")
         self.assertEqual(os.readlink(self.home / ".config/niri/config.kdl"), str(self.old / "platforms/linux/niri/config.kdl"))
         self.assertEqual(self.unit_states, {session.BAR: "active", session.WALLPAPER: "active"})
+
+    def notification_action(self, release, action):
+        self.commands.append(("notification-action", action, str(release)))
+        if action == "notifications-prepare":
+            for unit in session.NOTIFICATION_UNITS:
+                if self.unit_states[unit] == "active":
+                    self.control("stop", unit)
+
+    def test_notification_capability_preserves_key_and_adds_fixed_cleanup(self):
+        self.prepare(capabilities=["notifications"])
+        generated = (self.release / "managed/niri/config.kdl").read_text()
+        self.assertIn("Mod+Alt+N", generated)
+        self.assertIn("notifications toggle", generated)
+        self.assertIn('Mod+Alt+P { spawn "presentation-fixture"; }', generated)
+        unit = (self.release / ("managed/systemd/user/" + session.BAR)).read_text()
+        self.assertIn(str(self.release / "managed/niri/desktopctl.py"), unit)
+        self.assertIn("ExecStopPost=:/usr/bin/python3", unit)
+        self.assertIn("notifications-cleanup", unit)
+        self.assertIn("KillMode=mixed", unit)
+        self.assertIn("TimeoutStopSec=30", unit)
+        self.assertIn(str(self.release / "managed/niri/moonlit-session.json"), unit)
+        safety = tomllib.loads((self.live / "config/noctalia/zz-basic-safety.toml").read_text())
+        self.assertTrue(safety["notification"]["enable_daemon"])
+        self.assertFalse(safety["lockscreen"]["enabled"])
+        self.assertFalse(safety["control_center"]["show_session_button"])
+        self.assertIn("notifications", safety["bar"]["default"]["end"])
+        self.assertNotIn("notifications", safety["control_center"]["hidden_tabs"])
+
+    def test_caffeine_is_independent_of_notification_ownership(self):
+        self.prepare(capabilities=["caffeine"])
+        unit = (self.release / ("managed/systemd/user/" + session.BAR)).read_text()
+        self.assertIn("presentation-cleanup", unit)
+        self.assertNotIn("notifications-cleanup", unit)
+        safety = tomllib.loads((self.live / "config/noctalia/zz-basic-safety.toml").read_text())
+        self.assertFalse(safety["notification"]["enable_daemon"])
+        self.assertNotIn("notifications", safety["bar"]["default"]["end"])
+        self.assertIn("notifications", safety["control_center"]["hidden_tabs"])
+        self.assertIn({"type": "dotfiles/moonlit-controls:awake"}, safety["control_center"]["shortcuts"])
+
+    def test_notifications_archive_handoff_and_restore_have_narrow_service_scope(self):
+        previous = self.prepare()
+        self.unit_states.update({session.NOTIFICATION_UNITS[0]: "active", "mako.service": "inactive"})
+        with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control), \
+                mock.patch.object(session, "notification_action", side_effect=self.notification_action):
+            session.deploy(previous, apply=True)
+            self.release, self.live = self.root / "notifications-release", self.root / "notifications-live"
+            transaction = self.prepare(capabilities=["notifications"], inherit_transaction=previous)
+            session.deploy(transaction, apply=True)
+            before = session.journal(transaction)["services_before"]
+            self.assertEqual(set(before), set(session.CHANGED_UNITS + session.NOTIFICATION_UNITS))
+            archive = self.commands.index(("notification-action", "notifications-prepare", str(self.release)))
+            self.assertLess(self.commands.index(("stop", session.BAR)), archive)
+            self.assertLess(archive, self.commands.index(("stop", session.NOTIFICATION_UNITS[0])))
+            self.assertLess(self.commands.index(("stop", session.NOTIFICATION_UNITS[0])), self.commands.index(("start", session.BAR)))
+            self.commands.clear()
+            session.restore(transaction, apply=True)
+            self.assertLess(self.commands.index(("start", session.NOTIFICATION_UNITS[0])),
+                            self.commands.index(("notification-action", "notifications-cleanup", str(self.release))))
+            self.assertEqual(self.unit_states[session.NOTIFICATION_UNITS[0]], "active")
+            self.assertEqual(self.unit_states["mako.service"], "inactive")
+            self.release, self.live = self.root / "invalid-release", self.root / "invalid-live"
+            with self.assertRaisesRegex(session.SessionError, "previously active"):
+                self.prepare(capabilities=["notifications"], inherit_transaction=transaction)
+
+    def test_native_history_and_dnd_survive_following_stage_and_rollback(self):
+        transaction = self.prepare(capabilities=["notifications"])
+        old_release, old_live = self.release, self.live
+        self.unit_states.update({session.NOTIFICATION_UNITS[0]: "active", "mako.service": "inactive"})
+        with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control), \
+                mock.patch.object(session, "notification_action", side_effect=self.notification_action):
+            session.deploy(transaction, apply=True)
+            self.write(old_live, "notification-state.json", '{"dnd":true,"ignored":"not copied"}')
+            self.write(old_live, "state/noctalia/notification_history.json", '{"entries":["native history"]}')
+            self.write(old_live, "state/noctalia/notification_history_assets/icon.webp", "asset")
+            self.release, self.live = self.root / "caffeine-release", self.root / "caffeine-live"
+            next_transaction = self.prepare(capabilities=["notifications", "caffeine"], inherit_transaction=transaction)
+            session.deploy(next_transaction, apply=True)
+            self.assertEqual(json.loads((self.live / "notification-state.json").read_text()), {"dnd": True})
+            self.assertEqual(json.loads((self.live / "state/noctalia/notification_history.json").read_text()), {"entries": ["native history"]})
+            self.assertEqual((self.live / "state/noctalia/notification_history_assets/icon.webp").read_text(), "asset")
+            safety = tomllib.loads((self.live / "config/noctalia/zz-basic-safety.toml").read_text())
+            self.assertIn("dotfiles/moonlit-controls", safety["plugins"]["enabled"])
+            self.assertIn({"type": "dotfiles/moonlit-controls:awake"}, safety["control_center"]["shortcuts"])
+            self.assertNotIn({"type": "caffeine"}, safety["control_center"]["shortcuts"])
+            self.write(self.live, "state/noctalia/notification_history.json", '{"entries":["native history","new native history"]}')
+            self.commands.clear()
+            session.restore(next_transaction, apply=True)
+        self.assertEqual(json.loads((old_live / "state/noctalia/notification_history.json").read_text()),
+                         {"entries": ["native history", "new native history"]})
+        self.assertEqual(os.readlink(self.home / ".config/niri/config.kdl"), str(old_release / "managed/niri/config.kdl"))
+        release_current = ("notification-action", "notifications-cleanup", str(self.release))
+        acquire_previous = ("notification-action", "notifications-prepare", str(old_release))
+        self.assertLess(self.commands.index(release_current), self.commands.index(acquire_previous))
+        self.assertLess(self.commands.index(acquire_previous), self.commands.index(("start", session.BAR)))
+        self.assertNotIn(("notification-action", "notifications-cleanup", str(old_release)), self.commands)
+
+    def test_notification_start_failure_restores_previous_shell_and_cleans_mask(self):
+        previous = self.prepare()
+        old_release = self.release
+        self.unit_states.update({session.NOTIFICATION_UNITS[0]: "active", "mako.service": "inactive"})
+        real_start = session.start
+        with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control), \
+                mock.patch.object(session, "notification_action", side_effect=self.notification_action):
+            session.deploy(previous, apply=True)
+            self.release, self.live = self.root / "notify-release", self.root / "notify-live"
+            transaction = self.prepare(capabilities=["notifications"], inherit_transaction=previous)
+            def start(path):
+                if path == transaction:
+                    raise session.SessionError("notification owner acquisition failed")
+                return real_start(path)
+            with mock.patch.object(session, "start", side_effect=start):
+                with self.assertRaisesRegex(session.SessionError, "owner acquisition failed"):
+                    session.deploy(transaction, apply=True)
+        self.assertEqual(session.journal(transaction)["phase"], "restored")
+        self.assertEqual(os.readlink(self.home / ".config/niri/desktopctl.py"), str(old_release / "managed/niri/desktopctl.py"))
+        self.assertEqual(self.unit_states[session.NOTIFICATION_UNITS[0]], "active")
+        self.assertEqual(self.commands[-1], ("notification-action", "notifications-cleanup", str(self.release)))
+
+    def test_restore_unmasks_before_starting_a_previously_active_package_mako(self):
+        transaction = self.prepare(capabilities=["notifications"])
+        self.unit_states.update({session.NOTIFICATION_UNITS[0]: "inactive", "mako.service": "active"})
+        with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control), \
+                mock.patch.object(session, "notification_action", side_effect=self.notification_action):
+            session.deploy(transaction, apply=True)
+            self.commands.clear()
+            session.restore(transaction, apply=True)
+        cleanup = ("notification-action", "notifications-cleanup", str(self.release))
+        self.assertLess(self.commands.index(cleanup), self.commands.index(("start", "mako.service")))
+        self.assertEqual(self.unit_states["mako.service"], "active")
 
 
 if __name__ == "__main__":
