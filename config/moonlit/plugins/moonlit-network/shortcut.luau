@@ -1,4 +1,4 @@
-shortcut.setLabel("Network")
+shortcut.setLabel(noctalia.tr("shortcut"))
 shortcut.setIcon("network")
 shortcut.setActive(false)
 function onClick() noctalia.togglePanel("dotfiles/moonlit-network:overview") end

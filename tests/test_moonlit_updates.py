@@ -117,8 +117,11 @@ class UpdateTests(unittest.TestCase):
         env = dict(os.environ, XDG_STATE_HOME=str(self.root / "state"),
                    XDG_CACHE_HOME=str(self.root / "cache"),
                    MOONLIT_UPDATES_WIDGET=str(repo / "config/moonlit/plugins/moonlit-updates/widget.luau"))
-        result = subprocess.run([nvim, "--headless", "-u", "NONE", "-i", "NONE", "-l",
-                                 str(repo / "tests/moonlit_updates_widget.lua")],
-                                env=env, capture_output=True, text=True, timeout=8)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("async failure and recovery: PASS", result.stdout + result.stderr)
+        for language in ("en", "zh-Hans"):
+            with self.subTest(language=language):
+                result = subprocess.run([nvim, "--headless", "-u", "NONE", "-i", "NONE", "-l",
+                                         str(repo / "tests/moonlit_updates_widget.lua")],
+                                        env=dict(env, MOONLIT_TEST_LANGUAGE=language),
+                                        capture_output=True, text=True, timeout=8)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("async failure and recovery: PASS", result.stdout + result.stderr)

@@ -1,0 +1,24 @@
+{
+  "shortcut": "网络",
+  "title": "网络概览",
+  "subtitle": "有线网络 · Wi-Fi · 默认路由",
+  "type": {"ethernet": "有线网络", "wifi": "Wi-Fi"},
+  "state": {
+    "connected": "已连接", "connected-external": "已由外部连接", "disconnected": "未连接",
+    "unavailable": "不可用", "unmanaged": "未托管", "connecting": "连接中", "disconnecting": "正在断开",
+    "auth": "需要认证", "failed": "连接失败"
+  },
+  "no-devices": "未获取到有线网络或 Wi-Fi 状态",
+  "routes-title": "默认路由 · 全部路由表",
+  "implicit": "未显式设置",
+  "route": "优先级 {metric} · 路由表 {routeTable}",
+  "no-routes": "未获取到默认路由",
+  "footnote": "策略路由可能为特定目的地选择其他路由表。\n只读快照 · {at}",
+  "not-refreshed": "尚未刷新",
+  "reading": "读取中…",
+  "refresh": "刷新",
+  "wifi-settings": "Wi-Fi 设置",
+  "close": "关闭",
+  "read-error": "无法读取网络状态",
+  "start-error": "无法启动网络状态读取程序"
+}

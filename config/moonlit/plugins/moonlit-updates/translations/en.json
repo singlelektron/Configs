@@ -1,0 +1,18 @@
+{
+  "count": "Updates · {count}",
+  "checking": "Checking…",
+  "tooltip": "Arch official repositories only · click to check · right click to review",
+  "no-upgrade": "No automatic upgrade",
+  "read-error": "Could not read update status",
+  "invalid-status": "Update helper returned invalid status",
+  "start-error": "Could not start update helper",
+  "review-error": "Could not open update review",
+  "terminal": {
+    "title": "Arch Linux · official repository updates",
+    "checked": "Last successful check:",
+    "unknown": "No successful check yet.",
+    "count": "{count} packages available",
+    "upgrade": "To update the full system, run: sudo pacman -Syu",
+    "scope": "AUR packages are not included."
+  }
+}

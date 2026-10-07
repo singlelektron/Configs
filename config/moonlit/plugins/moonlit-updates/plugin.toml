@@ -1,7 +1,7 @@
 id = "dotfiles/moonlit-updates"
 name = "Repository updates"
 version = "0.1.0"
-plugin_api = 24
+plugin_api = 26
 description = "Manual official Arch repository checks using a separate database."
 [[widget]]
 id = "updates"

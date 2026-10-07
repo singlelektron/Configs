@@ -5,6 +5,9 @@
 ui_scale = 1.0
 
 [shell]
+# Use the native Simplified Chinese catalog without changing the system locale.
+lang = "zh-Hans"
+date_format = "{:%Y年%m月%d日}"
 font_family = "Noto Sans CJK SC"
 corner_radius_scale = 1.1
 offline_mode = true
@@ -146,12 +149,12 @@ scroll_down = "volume-down 5%"
 [widget.date]
 type = "clock"
 format = "{:%m月%d日}"
-timezone = "Asia/Shanghai"
+timezone = "" # Follow the system's local timezone.
 
 [widget.clock]
 type = "clock"
 format = "{:%H:%M}"
-timezone = "Asia/Shanghai"
+timezone = "" # Follow the system's local timezone.
 
 [control_center]
 sidebar = "full"

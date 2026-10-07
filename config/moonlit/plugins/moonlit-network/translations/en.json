@@ -1,0 +1,24 @@
+{
+  "shortcut": "Network",
+  "title": "Network overview",
+  "subtitle": "Ethernet · Wi-Fi · default routes",
+  "type": {"ethernet": "Ethernet", "wifi": "Wi-Fi"},
+  "state": {
+    "connected": "Connected", "connected-external": "Connected externally", "disconnected": "Disconnected",
+    "unavailable": "Unavailable", "unmanaged": "Unmanaged", "connecting": "Connecting", "disconnecting": "Disconnecting",
+    "auth": "Authentication required", "failed": "Failed"
+  },
+  "no-devices": "No Ethernet / Wi-Fi state reported",
+  "routes-title": "Default routes · all routing tables",
+  "implicit": "implicit",
+  "route": "metric {metric} · table {routeTable}",
+  "no-routes": "No default route reported",
+  "footnote": "Routing policy may choose a different table for a specific destination.\nRead-only snapshot · {at}",
+  "not-refreshed": "Not refreshed",
+  "reading": "Reading…",
+  "refresh": "Refresh",
+  "wifi-settings": "Wi-Fi settings",
+  "close": "Close",
+  "read-error": "Unable to read network state",
+  "start-error": "Could not start network reader"
+}

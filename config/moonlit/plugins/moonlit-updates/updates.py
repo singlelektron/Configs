@@ -123,27 +123,30 @@ def check(root=None):
         return value
 
 
-def review():
+def review(language="en"):
     """Niri owns the terminal, so a bar restart cannot terminate its shell."""
     if not os.environ.get("NIRI_SOCKET"):
         raise RuntimeError("Open update review from the Niri desktop")
     subprocess.run(["niri", "msg", "action", "spawn", "--", "kitty", "--title", "Arch updates",
-                    sys.executable, str(Path(__file__).resolve()), "terminal"], check=True)
+                    sys.executable, str(Path(__file__).resolve()), "--language", language, "terminal"], check=True)
 
 
-def terminal():
+def terminal(language="en"):
+    # Reuse the native plugin catalogs; machine diagnostics and package names stay unchanged.
+    catalog = "zh-Hans" if language.replace("_", "-").split(".")[0] in ("zh-Hans", "zh-CN", "zh-SG") else "en"
+    messages = json.loads((Path(__file__).parent / "translations" / (catalog + ".json")).read_text())["terminal"]
     value = status()
-    print("Arch Linux · official repository updates\n")
+    print(messages["title"] + "\n")
     if value["checked_at"]:
-        print("Last successful check:", time.strftime("%Y-%m-%d %H:%M", time.localtime(value["checked_at"])))
+        print(messages["checked"], time.strftime("%Y-%m-%d %H:%M", time.localtime(value["checked_at"])))
     if value["error"]:
         print(value["error"])
     if value["count"] is None:
-        print("No successful check yet.")
+        print(messages["unknown"])
     else:
-        print(f"{value['count']} packages available\n")
+        print(messages["count"].format(count=value["count"]) + "\n")
         print("\n".join(value["packages"]))
-    print("\nTo update the full system, run: sudo pacman -Syu\nAUR packages are not included.\n", flush=True)
+    print("\n" + messages["upgrade"] + "\n" + messages["scope"] + "\n", flush=True)
     shell = os.environ.get("SHELL") or "/bin/bash"
     os.execvp(shell, [shell])
 
@@ -151,14 +154,15 @@ def terminal():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("status", "check", "review", "terminal"))
+    parser.add_argument("--language", default="en", help="terminal review language; shell passes its language explicitly")
     args = parser.parse_args()
     try:
         if args.action in ("status", "check"):
             print(json.dumps(status() if args.action == "status" else check()))
         elif args.action == "review":
-            review()
+            review(args.language)
         else:
-            terminal()
+            terminal(args.language)
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         print(str(error), file=sys.stderr)
         return 1
