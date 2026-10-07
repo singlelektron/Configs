@@ -31,7 +31,7 @@ BAR = "dotfiles-niri-waybar.service"
 WALLPAPER = "dotfiles-niri-wallpaper.service"
 CHANGED_UNITS = (BAR, WALLPAPER)
 NOTIFICATION_UNITS = ("dotfiles-niri-mako.service", "mako.service")
-CAPABILITIES = ("audio", "network", "bluetooth", "calendar", "notifications", "caffeine")
+CAPABILITIES = ("audio", "network", "bluetooth", "calendar", "notifications", "caffeine", "session")
 TARGETS = (
     "niri/config.kdl", "niri/desktopctl.py", "niri/moonlit-session.json",
     "niri/moonlit-theme.kdl", "systemd/user/" + BAR,
@@ -118,7 +118,26 @@ def capability_list(values):
     return sorted(set(values))
 
 
-def basic_config(wallpapers, key_file, source=REPO, capabilities=(), calendar_dir=None):
+def session_actions(helper):
+    """Use the existing host lock/session path; never enable Noctalia's lockscreen."""
+    prefix = ["/usr/bin/python3", str(helper), "session-action"]
+    entries = []
+    for action, label in (("lock", "Lock"), ("suspend", "Suspend"), ("logout", "Log out"),
+                          ("reboot", "Restart"), ("shutdown", "Shut down")):
+        # Noctalia hides action=lock whenever its own lockscreen is disabled,
+        # even with a custom command. A labelled command keeps the old locker.
+        entry = {"action": "command" if action == "lock" else action, "label": label,
+                 "glyph": action, "command": shlex.join([*prefix, action]), "enabled": True,
+                 "countdown_seconds": 3 if action in ("reboot", "shutdown") else 0}
+        if action == "shutdown":
+            entry["variant"] = "destructive"
+        entries.append("  { " + ", ".join(key + " = " + json.dumps(value) for key, value in entry.items()) + " }")
+    text = "[shell.session]\nactions = [\n" + ",\n".join(entries) + "\n]\n[shell.session.power]\n"
+    return text + "".join(action + " = " + json.dumps(shlex.join([*prefix, action])) + "\n"
+                          for action in ("suspend", "reboot", "shutdown"))
+
+
+def basic_config(wallpapers, key_file, source=REPO, capabilities=(), calendar_dir=None, session_helper=None):
     # Device permissions are independently enforced by the bridge's two proxies.
     capabilities = capability_list(capabilities)
     preview = load_module(source / "scripts/desktop-preview.py", "session_preview_config")
@@ -141,13 +160,22 @@ def basic_config(wallpapers, key_file, source=REPO, capabilities=(), calendar_di
     safety = preview.safety_config(wallpapers, key_file)
     if "notifications" in capabilities:
         safety = safety.replace("[notification]\nenable_daemon = false", "[notification]\nenable_daemon = true")
+    if "session" in capabilities:
+        if session_helper is None or not session_helper.is_absolute():
+            raise SessionError("Session capability requires the fixed release helper")
+        first, last = "[shell.session]\n", "[idle.behavior.lock]\n"
+        if safety.count(first) != 1 or safety.count(last) != 1:
+            raise SessionError("Cannot locate the isolated session action boundaries")
+        before, _, after = safety.partition(first)
+        _, _, after = after.partition(last)
+        safety = before + session_actions(session_helper) + last + after
     text = safety + '''
 [shell.launcher]
 fetch_exchange_rates = false
 [bar.default]
 end = ''' + json.dumps(end) + '''
 [control_center]
-show_session_button = false
+show_session_button = ''' + str("session" in capabilities).lower() + '''
 hidden_tabs = ''' + json.dumps(hidden) + '\nshortcuts = [' + ', '.join(
         '{type=' + json.dumps(name) + '}' for name in shortcuts) + ']\n'
     text += '\n[calendar]\nenabled = ' + str("calendar" in capabilities).lower() + '\n'
@@ -269,7 +297,8 @@ def prepare(source_repo, commit, baseline, release, live_root, binary, library_p
     fd = os.open(key_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, "w") as stream:
         stream.write(os.urandom(32).hex() + "\n")
-    safety = basic_config(wallpapers, key_file, source, capabilities, calendar_dir)
+    safety = basic_config(wallpapers, key_file, source, capabilities, calendar_dir,
+                          release / "managed/niri/desktopctl.py")
     # Put supported launcher fields in the existing shell table, not a duplicate table.
     launcher = shlex.join(["/usr/bin/python3", str(release / "managed/niri/desktopctl.py"), "launch", "--"]) + " $CMD"
     safety = safety.replace("[shell]\n", '[shell]\nlaunch_apps_custom_command = ' + json.dumps(launcher)

@@ -439,6 +439,44 @@ include optional=true "../dotfiles-local/niri.kdl"
         self.assertIn("notifications", safety["control_center"]["hidden_tabs"])
         self.assertIn({"type": "dotfiles/moonlit-controls:awake"}, safety["control_center"]["shortcuts"])
 
+    def test_session_actions_use_fixed_helper_and_preserve_existing_lock_and_keys(self):
+        self.prepare(capabilities=["session"])
+        safety = tomllib.loads((self.live / "config/noctalia/zz-basic-safety.toml").read_text())
+        self.assertTrue(safety["control_center"]["show_session_button"])
+        self.assertFalse(safety["lockscreen"]["enabled"])
+        self.assertFalse(safety["lockscreen"]["lock_before_suspend"])
+        self.assertFalse(safety["shell"]["polkit_agent"])
+        self.assertFalse(safety["notification"]["enable_daemon"])
+        for behavior in safety["idle"]["behavior"].values():
+            self.assertFalse(behavior["enabled"])
+        prefix = ["/usr/bin/python3", str(self.release / "managed/niri/desktopctl.py"), "session-action"]
+        entries = safety["shell"]["session"]["actions"]
+        self.assertEqual([entry["label"] for entry in entries], ["Lock", "Suspend", "Log out", "Restart", "Shut down"])
+        self.assertEqual([entry["action"] for entry in entries], ["command", "suspend", "logout", "reboot", "shutdown"])
+        for entry, action in zip(entries, ("lock", "suspend", "logout", "reboot", "shutdown")):
+            self.assertTrue(entry["enabled"])
+            self.assertEqual(shlex.split(entry["command"]), [*prefix, action])
+            self.assertEqual(entry["countdown_seconds"], 3 if action in ("reboot", "shutdown") else 0)
+        self.assertEqual({name: shlex.split(command) for name, command in
+                          safety["shell"]["session"]["power"].items()},
+                         {name: [*prefix, name] for name in ("suspend", "reboot", "shutdown")})
+        manifest = session.verify(self.release)
+        self.assertEqual(manifest["changed_units"], list(session.CHANGED_UNITS))
+        generated = (self.release / "managed/niri/config.kdl").read_text()
+        for line in self.niri.splitlines():
+            if "Mod+" in line:
+                self.assertIn(line, generated)
+        self.assertFalse(any(cmd[0] in ("systemctl", "loginctl") for cmd in self.commands))
+
+    def test_session_config_requires_absolute_helper_and_shell_quotes_its_path(self):
+        with self.assertRaisesRegex(session.SessionError, "fixed release helper"):
+            session.basic_config(self.wallpapers, self.live / "key", capabilities=["session"])
+        helper = Path("/tmp/release's directory/$literal/desktopctl.py")
+        config = tomllib.loads(session.basic_config(self.wallpapers, self.live / "key", capabilities=["session"],
+                                                   session_helper=helper))
+        for entry in config["shell"]["session"]["actions"]:
+            self.assertEqual(shlex.split(entry["command"])[1], str(helper))
+
     def test_notifications_archive_handoff_and_restore_have_narrow_service_scope(self):
         previous = self.prepare()
         self.unit_states.update({session.NOTIFICATION_UNITS[0]: "active", "mako.service": "inactive"})

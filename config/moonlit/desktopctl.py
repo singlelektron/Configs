@@ -22,7 +22,7 @@ import tempfile
 import time
 
 BAR_UNIT = 'dotfiles-niri-waybar.service'
-DEVICE_CAPABILITIES = frozenset(('audio', 'network', 'bluetooth', 'calendar', 'notifications', 'caffeine'))
+DEVICE_CAPABILITIES = frozenset(('audio', 'network', 'bluetooth', 'calendar', 'notifications', 'caffeine', 'session'))
 KEEP_UNITS = tuple('dotfiles-niri-' + name + '.service' for name in ('mako', 'idle', 'session-events', 'polkit'))
 MAKO_UNITS = ('dotfiles-niri-mako.service', 'mako.service')
 SYSTEM_READ = {
@@ -820,6 +820,25 @@ def ipc(value, arguments):
     return result.stdout
 
 
+def session_action(value, action):
+    if 'session' not in capabilities(value):
+        raise DesktopError('Session actions have not been enabled')
+    commands = {
+        'lock': ['systemctl', '--user', 'start', 'dotfiles-niri-lock.service'],
+        # The existing forking swaylock unit becomes active after locking.
+        # A failed lock must prevent suspension, including from the power IPC.
+        'suspend': ['/bin/sh', '-c', 'systemctl --user start dotfiles-niri-lock.service && exec systemctl suspend'],
+        'logout': ['niri', 'msg', 'action', 'quit'],
+        'reboot': ['systemctl', 'reboot'],
+        'shutdown': ['systemctl', 'poweroff'],
+    }
+    if action not in commands:
+        raise DesktopError('Unknown session action')
+    # Niri launches this outside the shell's cgroup and filtered bus; logout
+    # retains Niri's confirmation, and power commands retain system inhibitors.
+    return host_launch(commands[action])
+
+
 def dispatch(argv, value):
     if not argv:
         raise DesktopError('Provide a desktop action')
@@ -831,6 +850,10 @@ def dispatch(argv, value):
         return host_launch(argv[2:])
     if argv[0]=='terminal':
         return terminal_launch(value,argv[1:])
+    if argv[0]=='session-action':
+        if len(argv) != 2:
+            raise DesktopError('Provide one session action')
+        return session_action(value,argv[1])
     if argv==['notifications-cleanup']:
         notifications_cleanup(value)
         return 0

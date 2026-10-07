@@ -61,13 +61,15 @@ python3 "$session_tool" restore --transaction "$transaction" --apply
 
 先人工验收英语界面、区域日期、真实分辨率 / 缩放、弹层焦点、启动器普通应用与 Terminal=true 应用、Kitty / Neovim、中文候选与剪贴板、媒体键和来源选择，以及恢复路径。**这些 GUI 项目未通过前，不进入设备控制阶段或放宽代理。** Wi-Fi、蓝牙、真实 stream→sink、通知和会话操作需要之后分别验收；状态命令返回 ready 不能替代它们。
 
-能力阶段沿用 `prepare`，增加 `--inherit-transaction "$previous_transaction"` 和重复的 `--capability`；支持 `audio`、`network`、`bluetooth`、`calendar`、`notifications`、`caffeine`。
+能力阶段沿用 `prepare`，增加 `--inherit-transaction "$previous_transaction"` 和重复的 `--capability`；支持 `audio`、`network`、`bluetooth`、`calendar`、`notifications`、`caffeine`、`session`。
 每次必须显式列出希望保留的完整能力集合，最多新增一项：例如先 `--capability audio`，下一阶段写 `--capability audio --capability network`；省略的能力会关闭。
 继承要求旧事务仍为当前部署的 active 版本；生成新 release 和 live 目录，再预演并应用新事务，无需先回旧 baseline。每阶段人工验收通过后再继续。
 升级继承有效手动壁纸和音乐来源选择；不会复制可覆盖安全限制的旧设置。
 `calendar` 依赖本机 GI 的 EDataServer、ECal、ICalGLib，通过独立只读 E-D-S 桥，将 GNOME Calendar 已启用源在桥启动时前后 365 天范围内的事件写入本次 live 目录内的私有 vdir；Noctalia 不取得 E-D-S 权限，也不启用提醒。首次等待最长 45 秒，部分源失败须查看日历状态，组件数不等于重复日程的发生次数。
 `notifications` 接管前将 mako 活跃通知、历史和模式存入私有 live 目录内的 `notification-archive/`，再以本次拥有的 runtime mask 阻止 `mako.service` 自动激活；正常退出、服务清理及回退仅撤销自己的 mask，不改系统 provider 或默认会话。旧历史保留为本机归档，不伪造导入或承诺恢复旧通知动作；通知阶段间仅延续相同 Noctalia 版本自己的历史和 DND 状态。
 通知阶段保留 `Mod+Alt+N` 的 DND 语义；事务额外记录两个 mako 服务状态，先恢复原通知服务，再解除临时屏蔽。`caffeine` 单独增加控制中心的 Keep awake 按钮，与原 `Mod+Alt+P` 共用既有 presentation 后端；手动锁屏和睡眠前锁屏保持有效。会话、电源和 ScreenSaver 权限不随这些能力开放。
+
+`session` 单独启用控制中心的 Lock / Suspend / Log out / Restart / Shut down，命令经固定 helper 返回主 Niri 环境，不放宽外壳的系统总线权限。锁屏复用旧 lock 服务；Suspend 必须先成功锁屏；Log out 保留 Niri 确认；Restart / Shut down 使用原生 3 秒可取消倒计时并尊重系统 inhibitors。它不替换锁屏、idle 或默认会话，也不改既有快捷键；实际睡眠、注销和电源验收需先保存工作，配置校验不代表这些动作已实测。
 回退新事务会恢复上一个 Moonlit 版本及其服务状态；保留整条 release / transaction / backup 链，按反序回退。安装被中断时，`restore` 会查找本次 release 已写入的备份，不会误用 baseline 修链备份。
 
 ## 隔离预览

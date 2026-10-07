@@ -57,6 +57,39 @@ class BridgeTests(unittest.TestCase):
         self.addCleanup(self.env_patch.stop)
         self.niri = dict(pid=100, start=200, state='S')
 
+    def test_session_actions_require_the_capability_and_keep_native_confirmation(self):
+        with mock.patch.object(m, 'host_launch', return_value=0) as launch:
+            with self.assertRaisesRegex(m.DesktopError, 'not been enabled'):
+                m.dispatch(['session-action', 'shutdown'], self.value)
+            launch.assert_not_called()
+            self.value['capabilities'] = ['session']
+            m.dispatch(['session-action', 'logout'], self.value)
+            self.assertEqual(launch.call_args.args[0], ['niri', 'msg', 'action', 'quit'])
+            with self.assertRaisesRegex(m.DesktopError, 'Unknown session'):
+                m.dispatch(['session-action', 'force-reboot'], self.value)
+            self.assertEqual(m.proxy_commands(self.live, 'session', 'system', ['session']),
+                             m.proxy_commands(self.live, 'session', 'system'))
+
+    def test_actual_suspend_command_never_suspends_after_a_failed_lock(self):
+        self.value['capabilities'] = ['session']
+        with mock.patch.object(m, 'host_launch', return_value=0) as launch:
+            m.dispatch(['session-action', 'suspend'], self.value)
+            command = launch.call_args.args[0]
+        fake = self.root/'systemctl'
+        fake.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$MOONLIT_COMMAND_LOG"\n'
+                        'if [ "$1" = --user ]; then exit "$MOONLIT_LOCK_RESULT"; fi\n')
+        fake.chmod(0o700)
+        log = self.root/'commands'
+        for lock_result in ('3', '0'):
+            log.unlink(missing_ok=True)
+            result = subprocess.run(command, env=dict(os.environ, PATH=str(self.root),
+                MOONLIT_COMMAND_LOG=str(log), MOONLIT_LOCK_RESULT=lock_result),
+                capture_output=True, text=True, timeout=5)
+            expected = ['--user start dotfiles-niri-lock.service']
+            if lock_result == '0': expected.append('suspend')
+            self.assertEqual(log.read_text().splitlines(), expected)
+            self.assertEqual(result.returncode, int(lock_result))
+
     @staticmethod
     def sha(path):
         return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -133,11 +166,11 @@ class BridgeTests(unittest.TestCase):
 
     def test_manifest_capabilities_are_opt_in_and_reject_unknown_or_malformed_lists(self):
         self.assertEqual(m.capabilities(m.read_manifest(self.link)), frozenset())
-        for selected in (['audio'], ['network','bluetooth'], ['audio','bluetooth','network'], ['notifications'], ['caffeine']):
+        for selected in (['audio'], ['network','bluetooth'], ['audio','bluetooth','network'], ['notifications'], ['caffeine'], ['session']):
             self.value['capabilities']=selected
             self.write_manifest()
             self.assertEqual(m.capabilities(m.read_manifest(self.link)), frozenset(selected))
-        for selected in ('audio', None, ['session'], ['audio','audio'], [1], [{}]):
+        for selected in ('audio', None, ['unrestricted'], ['audio','audio'], [1], [{}]):
             self.value['capabilities']=selected
             self.write_manifest()
             with self.subTest(selected=selected),self.assertRaisesRegex(m.DesktopError,'capabilities'):
