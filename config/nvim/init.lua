@@ -22,6 +22,15 @@ else
   vim.notify("Dotfiles plugins require Neovim 0.11.3 or newer; base editing is available.", vim.log.levels.WARN)
 end
 
+-- Optional deployed desktop palette; personal overrides still load last.
+local desktop_theme = vim.fs.joinpath(vim.fs.dirname(vim.fn.stdpath("config")), "moonlit", "nvim-theme.lua")
+if vim.uv.os_uname().sysname == "Linux" and vim.uv.fs_stat(desktop_theme) then
+  local ok, err = pcall(dofile, desktop_theme)
+  if not ok then
+    vim.notify("Desktop theme: " .. tostring(err), vim.log.levels.ERROR)
+  end
+end
+
 local local_config = vim.fs.joinpath(vim.fs.dirname(vim.fn.stdpath("config")), "dotfiles-local", "nvim.lua")
 if vim.uv.fs_stat(local_config) then
   local ok, err = pcall(dofile, local_config)

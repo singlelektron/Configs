@@ -1,6 +1,8 @@
 """Contract checks for the opt-in theme generator and readable semantic colors."""
 import importlib.util
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -82,6 +84,31 @@ class MoonlitThemeTests(unittest.TestCase):
     def test_checked_in_theme_has_no_drift(self):
         result = self.run_generator(ROOT, "--check")
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    @unittest.skipUnless(sys.platform == "linux" and shutil.which("nvim"), "Linux Neovim required")
+    def test_deployed_editor_palette_is_optional_and_personal_override_loads_last(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            config = root / "config"
+            (config / "moonlit").mkdir(parents=True)
+            (config / "dotfiles-local").mkdir()
+            theme = config / "moonlit/nvim-theme.lua"
+            shutil.copyfile(ROOT / "config/moonlit/nvim-theme.lua", theme)
+            (config / "dotfiles-local/nvim.lua").write_text(
+                'vim.g.desktop_seen = vim.api.nvim_get_hl(0, {name="NormalFloat"}).bg\n'
+                'vim.api.nvim_set_hl(0, "NormalFloat", {bg="#123456"})\n')
+            env = dict(os.environ, XDG_CONFIG_HOME=str(config), XDG_DATA_HOME=str(root / "data"),
+                       XDG_STATE_HOME=str(root / "state"), XDG_CACHE_HOME=str(root / "cache"),
+                       DOTFILES_NVIM_NO_PLUGINS="1")
+            for expected in ("251d30", "241d29"):
+                result = subprocess.run(["nvim", "--headless", "-i", "NONE", "-u", str(ROOT / "config/nvim/init.lua"),
+                    "+lua assert(vim.g.desktop_seen == tonumber('" + expected + "', 16)); "
+                    "assert(vim.api.nvim_get_hl(0, {name='NormalFloat'}).bg == tonumber('123456',16)); "
+                    "assert(vim.o.clipboard == '' and vim.fn.maparg('<CR>', 'i') == '')", "+qa"],
+                    env=env, capture_output=True, text=True, timeout=15)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertNotIn("Error", result.stderr)
+                theme.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
