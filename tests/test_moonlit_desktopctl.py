@@ -112,6 +112,10 @@ class BridgeTests(unittest.TestCase):
             m.read_manifest(self.link)
 
     def test_environment_preserves_application_config_and_restricts_only_shell(self):
+        self.value['binary'] = str(self.root/'runtime/usr/bin/noctalia')
+        definitions = self.root/'runtime/usr/share/qalculate'
+        definitions.mkdir(parents=True)
+        os.environ['QALCULATE_DEFINITIONS_DIR'] = '/old-runtime/share/qalculate'
         env = m.shell_environment(self.value, 'session-proxy', 'system-proxy')
         for name in ('HOME','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_STATE_HOME','NIRI_SOCKET','WAYLAND_DISPLAY','LANG'):
             self.assertEqual(env[name], self.environment[name])
@@ -121,6 +125,11 @@ class BridgeTests(unittest.TestCase):
         self.assertNotIn('NOCTALIA_CACHE_HOME', env)
         self.assertEqual(os.environ['PIPEWIRE_REMOTE'], 'pipewire-0')
         self.assertIn('terminal', env['TERMINAL'])
+        self.assertEqual(env['QALCULATE_DEFINITIONS_DIR'], str(definitions))
+        self.assertEqual(os.environ['QALCULATE_DEFINITIONS_DIR'], '/old-runtime/share/qalculate')
+        definitions.rmdir()
+        self.assertNotIn('QALCULATE_DEFINITIONS_DIR',
+                         m.shell_environment(self.value, 'session-proxy', 'system-proxy'))
 
     def test_proxy_only_allows_read_devices_and_explicit_player_transport(self):
         system, session = m.proxy_commands(self.live, 'real-session', 'real-system')

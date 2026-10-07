@@ -171,6 +171,11 @@ def shell_environment(value, session_address, system_address):
                TERMINAL=shlex.join(['/usr/bin/python3',str(fixed_helper(value)),'terminal']))
     if value.get('library_path'):
         env['LD_LIBRARY_PATH'] = value['library_path']
+        # Packaged libqalculate otherwise looks in the system /usr/share.
+        env.pop('QALCULATE_DEFINITIONS_DIR', None)
+        definitions = Path(value['binary']).parent.parent/'share/qalculate'
+        if definitions.is_dir():
+            env['QALCULATE_DEFINITIONS_DIR'] = str(definitions)
     return env
 
 
