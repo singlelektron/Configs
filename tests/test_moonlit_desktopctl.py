@@ -570,7 +570,7 @@ class BridgeTests(unittest.TestCase):
                          [['systemctl','--user','start','dotfiles-niri-idle.service']])
         self.assertFalse(any('session-events' in str(item) or 'lock.service' in str(item) for item in run.call_args_list))
         self.assertTrue(all('DBUS_SESSION_BUS_ADDRESS' not in item.kwargs['env'] for item in run.call_args_list))
-        ipc.assert_called_with(self.value,['plugin','dotfiles/moonlit-controls:awake','all','refresh'])
+        ipc.assert_called_with(self.value,['plugin','dotfiles/moonlit-controls:state','all','refresh'])
 
     def test_presentation_initially_inactive_refuses_before_mutation_and_preserves_external_flag(self):
         self.value['capabilities']=['caffeine']

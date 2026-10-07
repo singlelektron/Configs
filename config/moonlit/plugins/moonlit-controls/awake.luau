@@ -37,8 +37,22 @@ local function refresh()
   shortcut.setEnabled(helper ~= nil and not pending)
   shortcut.setLabel(noctalia.tr(helper == nil and "awake.unavailable"
     or (failed and "awake.failed" or "awake.label")))
+  noctalia.state.set("moonlit.awake.tile", {
+    loaded = true, active = active, available = helper ~= nil,
+    pending = pending, failed = failed,
+  })
 end
 
+-- Noctalia 5.2.1 shortcuts have no IPC endpoint. The tiny service relays explicit
+-- helper events to this VM, including while the control center is closed.
+noctalia.state.watch("moonlit.awake.refresh", function()
+  if not alive then return end
+  failed = false
+  refresh()
+end)
+-- The host always arms a timer; suppress its default one-second empty dispatch.
+-- There is no update() handler and no periodic file read or subprocess.
+noctalia.setUpdateInterval(2147483647)
 shortcut.setIcon("caffeine-on", "caffeine-off")
 refresh()
 
@@ -62,21 +76,8 @@ function onClick()
   end
 end
 
--- The helper notifies us after Mod+Alt+P or an explicit presentation command.
--- Reading the shared flag on these events needs no timer or background process.
-function onIpc(event, payload)
-  if not alive then return end
-  if event == "refresh" then
-    failed = false
-    refresh()
-  elseif event == "status" then
-    noctalia.log("moonlit-awake-status " .. noctalia.json.encode({
-      request = payload, active = active, available = helper ~= nil,
-      pending = pending, failed = failed,
-    }))
-  end
-end
-
 function onExit()
+  if not alive then return end
   alive = false
+  noctalia.state.set("moonlit.awake.tile", {loaded = false})
 end

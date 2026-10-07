@@ -14,6 +14,7 @@ class KeepAwakeTests(unittest.TestCase):
         manifest = tomllib.loads((PLUGIN / "plugin.toml").read_text())
         self.assertEqual(manifest["id"], "dotfiles/moonlit-controls")
         self.assertEqual(manifest["shortcut"], [{"id": "awake", "entry": "awake.luau"}])
+        self.assertEqual(manifest["service"], [{"id": "state", "entry": "state.luau"}])
         translations = [json.loads((PLUGIN / f"translations/{lang}.json").read_text())
                         for lang in ("en", "zh-Hans")]
         self.assertEqual(translations[0].keys(), translations[1].keys())
@@ -26,9 +27,22 @@ local root = arg[1]
 local marker, accepted, capability, helperExists = false, true, true, true
 local manifestPresent, runtimePresent = true, true
 local calls, callbacks, logs = {}, {}, {}
+local shared, watchers = {}, {}
 local release = "/private/with spaces/'$literal"
 local flag = "/run/user/1000/dotfiles-niri/presentation"
 local api = {
+  state = {
+    get = function(key) return shared[key] end,
+    set = function(key, value)
+      shared[key] = value
+      for _, callback in ipairs(watchers[key] or {}) do callback(value) end
+    end,
+    watch = function(key, callback)
+      watchers[key] = watchers[key] or {}
+      table.insert(watchers[key], callback)
+    end,
+  },
+  setUpdateInterval = function(interval) assert(interval == 2147483647) end,
   getenv = function(name)
     if name == "MOONLIT_SESSION_MANIFEST" and manifestPresent then return "/private/manifest.json" end
     if name == "XDG_RUNTIME_DIR" and runtimePresent then return "/run/user/1000" end
@@ -60,6 +74,17 @@ api.json.encode = function(value)
   logs.diagnostic = value
   return "encoded"
 end
+local function serviceEntry()
+  local env = setmetatable({noctalia = api}, {__index = _G})
+  assert(loadfile(root .. "/state.luau", "t", env))()
+  assert(env.update == nil, "relay must have no polling callback")
+  return env
+end
+local service = serviceEntry()
+service.onIpc("status", "before shortcut load")
+assert(not logs.diagnostic.loaded, "must not claim a shortcut rendered before lazy load")
+service.onIpc("refresh", "before shortcut load")
+assert(#calls == 0 and shared["moonlit.awake.refresh"] == 1)
 local function entry()
   local ui = {}
   local env = setmetatable({noctalia = api, shortcut = {
@@ -70,6 +95,7 @@ local function entry()
   }}, {__index = _G})
   assert(loadfile(root .. "/awake.luau", "t", env))()
   assert(env.update == nil, "shortcut must have no polling callback")
+  assert(env.onIpc == nil, "5.2.1 does not dispatch shortcut IPC; use service relay")
   return env, ui
 end
 local env, ui = entry()
@@ -77,9 +103,9 @@ assert(not ui.active and ui.enabled and ui.label == "awake.label")
 assert(ui.on == "caffeine-on" and ui.off == "caffeine-off")
 assert(#calls == 0, "loading must not spawn a process")
 marker = true
-env.onIpc("refresh", "shortcut")
+service.onIpc("refresh", "shortcut")
 assert(ui.active and #calls == 0, "external shortcut state must refresh without a subprocess")
-env.onIpc("status", "test")
+service.onIpc("status", "test")
 assert(logs.diagnostic.active and logs.diagnostic.available and logs.diagnostic.request == "test")
 env.onClick()
 assert(not ui.enabled and ui.active, "pending action must not pretend the state changed")
@@ -88,7 +114,7 @@ assert(#argv == 4 and argv[1] == "/usr/bin/python3"
   and argv[2] == release .. "/managed/niri/desktopctl.py"
   and argv[3] == "presentation" and argv[4] == "toggle", "must preserve literal argv")
 env.onClick()
-env.onIpc("refresh", "while pending")
+service.onIpc("refresh", "while pending")
 assert(#calls == 1 and not ui.enabled, "double click/IPC must not release a pending action")
 marker = false
 callbacks[1]({exitCode = 0})
@@ -97,7 +123,7 @@ env.onClick()
 callbacks[2]({exitCode = 1})
 assert(not ui.active and ui.enabled and ui.label == "awake.failed")
 marker = true
-env.onIpc("refresh", "shortcut succeeded")
+service.onIpc("refresh", "shortcut succeeded")
 assert(ui.active and ui.label == "awake.label")
 accepted = false
 env.onClick()
@@ -109,10 +135,22 @@ env.onExit()
 local oldLabel = ui.label
 marker = false
 late({exitCode = 0})
-env.onIpc("refresh", "after reload")
+service.onIpc("refresh", "after reload")
 assert(ui.active and ui.label == oldLabel, "late callback must not mutate a stopped entry")
+service.onIpc("status", "unloaded")
+assert(not logs.diagnostic.loaded, "stopped shortcut must not leave a stale rendered diagnostic")
 local replacement, fresh = entry()
 assert(fresh.enabled and not fresh.active and fresh.label == "awake.label", "reload must not strand pending")
+service.onExit()
+local revision = shared["moonlit.awake.refresh"]
+service.onIpc("refresh", "stopped relay")
+assert(shared["moonlit.awake.refresh"] == revision)
+service = serviceEntry()
+marker = true
+service.onIpc("refresh", "new relay")
+assert(fresh.active, "relay reload must keep updating the still-live shortcut")
+service.onIpc("status", "new relay")
+assert(logs.diagnostic.loaded and logs.diagnostic.active)
 for _, unavailable in ipairs({"capability", "helper", "manifest", "runtime"}) do
   capability, helperExists, manifestPresent, runtimePresent = true, true, true, true
   if unavailable == "capability" then capability = false end

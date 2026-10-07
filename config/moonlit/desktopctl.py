@@ -514,7 +514,7 @@ def presentation(value, action):
                 release_presentation(value)
                 raise
     try:
-        ipc(value,['plugin','dotfiles/moonlit-controls:awake','all','refresh'])
+        ipc(value,['plugin','dotfiles/moonlit-controls:state','all','refresh'])
     except (DesktopError,OSError,ValueError,subprocess.SubprocessError):
         pass  # The backend succeeded; panel reload also reads the real flag.
     return 0
