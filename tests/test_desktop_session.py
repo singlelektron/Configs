@@ -62,6 +62,7 @@ include optional=true "../dotfiles-local/niri.kdl"
             self.write(self.repo, "scripts/" + name, (REPO / "scripts" / name).read_text())
         for name, text in {
             "config/moonlit/desktopctl.py": 'import json\nprint(json.dumps({"ready": True}))\n',
+            "config/moonlit/calendar_bridge.py": '# private read-only calendar fixture\n',
             "config/moonlit/settings.toml": '[shell]\nlang="zh-Hans"\n',
             "config/moonlit/niri-theme.kdl": 'layout { background-color "#18131f"; }\n',
             "config/moonlit/kitty-theme.conf": "background #18131f\n",
@@ -147,6 +148,8 @@ include optional=true "../dotfiles-local/niri.kdl"
                                      "launch", "--"]) + " $CMD")
         self.assertFalse(safety["notification"]["enable_daemon"])
         self.assertFalse(safety["lockscreen"]["enabled"])
+        self.assertFalse(safety["calendar"]["enabled"])
+        self.assertFalse((self.live / "data/noctalia/calendar-vdir").exists())
 
     def test_dirty_source_is_rejected_before_creating_release(self):
         (self.repo / "config/moonlit/settings.toml").write_text("dirty")
@@ -276,7 +279,7 @@ include optional=true "../dotfiles-local/niri.kdl"
             session.deploy(transaction, apply=True)
 
     def test_capabilities_are_explicit_and_only_one_new_permission_is_allowed(self):
-        with self.assertRaisesRegex(session.SessionError, "Unsupported device"):
+        with self.assertRaisesRegex(session.SessionError, "Unsupported capability"):
             self.prepare(capabilities=["notifications"])
         with self.assertRaisesRegex(session.SessionError, "only one new"):
             self.prepare(capabilities=["audio", "network"])
@@ -349,11 +352,27 @@ include optional=true "../dotfiles-local/niri.kdl"
         transaction = self.prepare()
         with mock.patch.object(session, "require_host"), mock.patch.object(session, "control", side_effect=self.control):
             session.deploy(transaction, apply=True)
-            for index, caps in enumerate((["audio"], ["audio", "network"], ["audio", "network", "bluetooth"]), 1):
+            for index, caps in enumerate((["audio"], ["audio", "network"], ["audio", "network", "bluetooth"],
+                                          ["audio", "network", "bluetooth", "calendar"]), 1):
                 self.release, self.live = self.root / f"release-{index}", self.root / f"live-{index}"
                 transaction = self.prepare(capabilities=caps, inherit_transaction=transaction)
                 session.deploy(transaction, apply=True)
                 self.assertEqual(session.status(transaction)["capabilities"], sorted(caps))
+
+    def test_calendar_is_an_explicit_private_local_account_with_reminders_disabled(self):
+        transaction = self.prepare(capabilities=["calendar"])
+        runtime = json.loads((self.release / "managed/niri/moonlit-session.json").read_text())
+        directory = self.live / "data/noctalia/calendar-vdir"
+        self.assertEqual(runtime["calendar_dir"], str(directory))
+        self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+        safety = tomllib.loads((self.live / "config/noctalia/zz-basic-safety.toml").read_text())
+        self.assertTrue(safety["calendar"]["enabled"])
+        self.assertFalse(safety["calendar"]["reminders"]["enabled"])
+        self.assertEqual(safety["calendar"]["account"], {"gnome_calendar": {
+            "type": "vdir", "name": "GNOME Calendar · read-only", "path": str(directory), "calendars": []}})
+        self.assertNotIn("calendar", safety["control_center"]["hidden_tabs"])
+        self.assertFalse(safety["notification"]["enable_daemon"])
+        self.assertEqual(session.journal(transaction)["phase"], "prepared")
 
     def test_interrupted_install_discovers_backup_before_standalone_restore(self):
         transaction = self.prepare()

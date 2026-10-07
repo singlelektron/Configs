@@ -22,7 +22,7 @@ import tempfile
 import time
 
 BAR_UNIT = 'dotfiles-niri-waybar.service'
-DEVICE_CAPABILITIES = frozenset(('audio', 'network', 'bluetooth'))
+DEVICE_CAPABILITIES = frozenset(('audio', 'network', 'bluetooth', 'calendar'))
 KEEP_UNITS = tuple('dotfiles-niri-' + name + '.service' for name in ('mako', 'idle', 'session-events', 'polkit'))
 SYSTEM_READ = {
     'org.freedesktop.NetworkManager': ('GetDevices', 'GetAllDevices', 'GetDeviceByIpIface', 'GetPermissions'),
@@ -156,6 +156,15 @@ def read_manifest(path=None):
         resolved = Path(value[key]).resolve()
         if root.resolve() not in resolved.parents:
             raise DesktopError('Noctalia directories must stay within the live runtime')
+    if 'calendar' in capabilities(value):
+        if not isinstance(value.get('calendar_dir'),str):
+            raise DesktopError('Calendar output must be the private live vdir directory')
+        calendar = Path(value['calendar_dir'])
+        expected_calendar = root/'data/noctalia/calendar-vdir'
+        if (calendar != expected_calendar or calendar.resolve() != expected_calendar
+                or not calendar.is_dir() or calendar.stat().st_uid != os.getuid()
+                or calendar.stat().st_mode & 0o077):
+            raise DesktopError('Calendar output must be the private live vdir directory')
     helper = Path(value['legacy_desktopctl'])
     if helper.resolve() == Path(__file__).resolve() or not helper.is_file():
         raise DesktopError('Legacy helper is missing or loops back to Moonlit')
@@ -296,6 +305,30 @@ def noctalia_socket():
     return Path(os.environ['XDG_RUNTIME_DIR'])/('noctalia-'+os.environ['WAYLAND_DISPLAY']+'.sock')
 
 
+def calendar_command(value):
+    return ['/usr/bin/python3',str(Path(value['release'])/'source/config/moonlit/calendar_bridge.py'),
+            '--output',value['calendar_dir'],'--parent',str(os.getpid())]
+
+
+def calendar_status(value, session):
+    if 'calendar' not in capabilities(value):
+        return None
+    running = alive(session.get('calendar_bridge'))
+    result = {'running':running,'ready':False,'degraded':False}
+    try:
+        state = json.loads((Path(value['calendar_dir'])/'status.json').read_text())
+        if not isinstance(state,dict):
+            raise ValueError('Invalid calendar bridge status')
+        for key in ('source_count','event_count','component_count','error_count','updated_at','degraded'):
+            if key in state: result[key] = state[key]
+        result['ready'] = running and state.get('ready') is True
+    except (OSError,ValueError,TypeError):
+        result['reason'] = 'Waiting for the calendar bridge status'
+    if not running:
+        result['reason'] = 'Calendar bridge stopped; restart the shell to reconnect. See calendar_bridge.log'
+    return result
+
+
 def shell(value):
     niri = require_session()
     root = Path(value['live_root'])
@@ -310,13 +343,14 @@ def shell(value):
         os.close(lockfd)
         raise DesktopError('Moonlit already has a session runner')
     children, pidfds = [], []
+    calendar_child = None
     published_session = False
     def interrupted(_number, _frame):
         raise InterruptedError('Moonlit runner stopped')
     previous = {number: signal.signal(number, interrupted) for number in (signal.SIGTERM, signal.SIGINT)}
     try:
         existing = json.loads((root/'processes.json').read_text()) if (root/'processes.json').exists() else {}
-        if any(alive(existing.get(key)) for key in ('runner', 'shell', 'system_proxy', 'session_proxy')):
+        if any(alive(existing.get(key)) for key in ('runner', 'shell', 'system_proxy', 'session_proxy', 'calendar_bridge')):
             raise DesktopError('A previous Moonlit child is still alive; recover that session first')
         if noctalia_socket().exists():
             try:
@@ -349,6 +383,17 @@ def shell(value):
             verify_proxy('unix:path='+str(socket_path), session=name=='session_proxy')
         system_address='unix:path='+str(root/'system-bus')
         session_address='unix:path='+str(root/'session-bus')
+        if 'calendar' in capabilities(value):
+            # Only this read-only EDS adapter gets the genuine session bus. It
+            # owns no EDS process; Noctalia keeps using its filtered bus below.
+            calendar_env = dict(os.environ)
+            calendar_env['DBUS_SESSION_BUS_ADDRESS'] = original_session
+            (Path(value['calendar_dir'])/'status.json').unlink(missing_ok=True)
+            with (root/'calendar_bridge.log').open('a') as log:
+                calendar_child = subprocess.Popen(calendar_command(value),env=calendar_env,stdout=log,stderr=log)
+            children.append(calendar_child)
+            records['calendar_bridge'] = identity(calendar_child.pid)
+            atomic_json(root/'processes.json',records)
         env=shell_environment(value,session_address,system_address)
         with (root/'shell.log').open('a') as log:
             child=subprocess.Popen([value['binary']],env=env,stdout=log,stderr=log)
@@ -360,10 +405,21 @@ def shell(value):
                     'DBUS_SESSION_BUS_ADDRESS':session_address,'DBUS_SYSTEM_BUS_ADDRESS':system_address})
         published_session = True
         pidfds=[os.pidfd_open(p.pid) for p in children]
-        readable,_,_=select.select(pidfds,[],[])
-        if pidfds[-1] in readable:
-            return children[-1].wait()
-        raise DesktopError('A D-Bus safety proxy exited; stopping Noctalia')
+        calendar_fd = pidfds[children.index(calendar_child)] if calendar_child else None
+        shell_fd = pidfds[-1]
+        while True:
+            readable,_,_=select.select(pidfds,[],[])
+            if shell_fd in readable:
+                return children[-1].wait()
+            if any(fd in readable for fd in pidfds[:2]):
+                raise DesktopError('A D-Bus safety proxy exited; stopping Noctalia')
+            if calendar_fd in readable:
+                code = calendar_child.wait()
+                print(f'Moonlit calendar bridge exited ({code}); shell remains running. '
+                      'See calendar_bridge.log; restart the shell to reconnect.',file=sys.stderr,flush=True)
+                pidfds.remove(calendar_fd)
+                os.close(calendar_fd)
+                calendar_fd = None
     except InterruptedError:
         return 0
     finally:
@@ -427,9 +483,10 @@ def dispatch(argv, value):
         if not isinstance(state,dict) or not state:
             raise DesktopError('Noctalia returned invalid status')
         session=json.loads((Path(value['live_root'])/'session.json').read_text())
-        print(json.dumps({'ready':True,'phase':value['phase'],'capabilities':sorted(capabilities(value)),
-              'processes':{key:session[key] for key in ('runner','niri','shell','system_proxy','session_proxy')},
-              'noctalia':state}))
+        calendar=calendar_status(value,session)
+        processes={key:session[key] for key in ('runner','niri','shell','system_proxy','session_proxy','calendar_bridge') if key in session}
+        print(json.dumps({'ready':calendar is None or calendar['ready'],'phase':value['phase'],
+              'capabilities':sorted(capabilities(value)),'processes':processes,'calendar':calendar,'noctalia':state}))
         return 0
     mapping={('applications',):('panel-toggle','launcher'),('launcher',):('panel-toggle','launcher'),
              ('menu',):('panel-toggle','control-center'),('panel',):('panel-toggle','control-center'),

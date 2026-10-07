@@ -30,7 +30,7 @@ KIND = "moonlit-basic-session-v1"
 BAR = "dotfiles-niri-waybar.service"
 WALLPAPER = "dotfiles-niri-wallpaper.service"
 CHANGED_UNITS = (BAR, WALLPAPER)
-CAPABILITIES = ("audio", "network", "bluetooth")
+CAPABILITIES = ("audio", "network", "bluetooth", "calendar")
 TARGETS = (
     "niri/config.kdl", "niri/desktopctl.py", "niri/moonlit-session.json",
     "niri/moonlit-theme.kdl", "systemd/user/" + BAR,
@@ -106,11 +106,11 @@ window-rule {
 
 def capability_list(values):
     if not isinstance(values, (list, tuple)) or any(value not in CAPABILITIES for value in values):
-        raise SessionError("Unsupported device capability; expected audio, network or bluetooth")
+        raise SessionError("Unsupported capability; expected audio, network, bluetooth or calendar")
     return sorted(set(values))
 
 
-def basic_config(wallpapers, key_file, source=REPO, capabilities=()):
+def basic_config(wallpapers, key_file, source=REPO, capabilities=(), calendar_dir=None):
     # Device permissions are independently enforced by the bridge's two proxies.
     capabilities = capability_list(capabilities)
     preview = load_module(source / "scripts/desktop-preview.py", "session_preview_config")
@@ -121,7 +121,11 @@ def basic_config(wallpapers, key_file, source=REPO, capabilities=()):
         end.insert(2, "volume")
         hidden.remove("audio")
         shortcuts.insert(2, "audio")
-    return preview.safety_config(wallpapers, key_file) + '''
+    if "calendar" in capabilities:
+        if calendar_dir is None:
+            raise SessionError("Calendar capability requires a private calendar directory")
+        hidden.remove("calendar")
+    text = preview.safety_config(wallpapers, key_file) + '''
 [shell.launcher]
 fetch_exchange_rates = false
 [bar.default]
@@ -130,6 +134,12 @@ end = ''' + json.dumps(end) + '''
 show_session_button = false
 hidden_tabs = ''' + json.dumps(hidden) + '\nshortcuts = [' + ', '.join(
         '{type=' + json.dumps(name) + '}' for name in shortcuts) + ']\n'
+    text += '\n[calendar]\nenabled = ' + str("calendar" in capabilities).lower() + '\n'
+    text += '[calendar.reminders]\nenabled = false\n'
+    if "calendar" in capabilities:
+        text += '[calendar.account.gnome_calendar]\ntype = "vdir"\nname = "GNOME Calendar · read-only"\npath = '
+        text += json.dumps(str(calendar_dir)) + '\ncalendars = []\n'
+    return text
 
 
 def predecessor(path, baseline, config, state):
@@ -218,12 +228,17 @@ def prepare(source_repo, commit, baseline, release, live_root, binary, library_p
     required = ("scripts/deploy.py", "scripts/desktop-session.py", "config/moonlit/desktopctl.py",
                 "config/moonlit/settings.toml", "config/moonlit/niri-theme.kdl",
                 "config/moonlit/kitty-theme.conf", "config/moonlit/nvim-theme.lua")
+    if "calendar" in capabilities:
+        required += ("config/moonlit/calendar_bridge.py",)
     for name in required:
         if not (source / name).is_file():
             raise SessionError("Committed release lacks required file: " + name)
     live_root.mkdir(parents=True, mode=0o700)
     for name in ("config/noctalia", "state/noctalia", "data/noctalia/plugins", "cache"):
         (live_root / name).mkdir(parents=True, mode=0o700, exist_ok=True)
+    calendar_dir = live_root / "data/noctalia/calendar-vdir"
+    if "calendar" in capabilities:
+        calendar_dir.mkdir(mode=0o700)
     config_source = source / "config/moonlit"
     shutil.copy2(config_source / "settings.toml", live_root / "config/noctalia/settings.toml")
     shutil.copytree(config_source / "palettes", live_root / "config/noctalia/palettes")
@@ -232,7 +247,7 @@ def prepare(source_repo, commit, baseline, release, live_root, binary, library_p
     fd = os.open(key_file, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     with os.fdopen(fd, "w") as stream:
         stream.write(os.urandom(32).hex() + "\n")
-    safety = basic_config(wallpapers, key_file, source, capabilities)
+    safety = basic_config(wallpapers, key_file, source, capabilities, calendar_dir)
     # Put supported launcher fields in the existing shell table, not a duplicate table.
     launcher = shlex.join(["/usr/bin/python3", str(release / "managed/niri/desktopctl.py"), "launch", "--"]) + " $CMD"
     safety = safety.replace("[shell]\n", '[shell]\nlaunch_apps_custom_command = ' + json.dumps(launcher)
@@ -250,6 +265,8 @@ def prepare(source_repo, commit, baseline, release, live_root, binary, library_p
                "state_dir": str(live_root / "state"), "data_dir": str(live_root / "data"),
                "cache_dir": str(live_root / "cache"), "bar_unit": BAR,
                "release": str(release), "transaction": str(transaction)}
+    if "calendar" in capabilities:
+        runtime["calendar_dir"] = str(calendar_dir)
     generated = {
         "niri/config.kdl": live_niri((baseline / "platforms/linux/niri/config.kdl").read_text()),
         "niri/desktopctl.py": (config_source / "desktopctl.py").read_text(),
@@ -481,7 +498,9 @@ def start(transaction):
     reload_niri(Path(manifest["config"]))
     control("start", BAR)
     helper = Path(manifest["config"]) / "niri/desktopctl.py"
-    deadline = time.monotonic() + 15
+    # E-D-S asynchronously enumerates enabled sources and their cached views on
+    # the calendar's first startup; ordinary shell stages keep the shorter wait.
+    deadline = time.monotonic() + (45 if "calendar" in manifest.get("capabilities", []) else 15)
     last_error = "bridge not ready"
     while time.monotonic() < deadline:
         result = subprocess.run([sys.executable, str(helper), "status"], capture_output=True, text=True, timeout=4)

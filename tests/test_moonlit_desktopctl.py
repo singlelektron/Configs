@@ -275,6 +275,88 @@ class BridgeTests(unittest.TestCase):
         with mock.patch.object(m,'live_environment',return_value={}),mock.patch.object(m,'run',return_value=subprocess.CompletedProcess([],0,'error: not ready\n')):
             with self.assertRaisesRegex(m.DesktopError,'not ready'):m.ipc(self.value,['status'])
 
+    def prepare_calendar(self):
+        calendar=self.live/'data/noctalia/calendar-vdir'
+        calendar.mkdir(parents=True,mode=0o700)
+        self.value.update(capabilities=['calendar'],calendar_dir=str(calendar))
+        self.write_manifest()
+        return calendar
+
+    def test_calendar_requires_private_managed_vdir_without_opening_shell_bus(self):
+        calendar=self.prepare_calendar()
+        self.assertEqual(m.read_manifest(self.link)['calendar_dir'],str(calendar))
+        self.assertEqual(m.proxy_commands(self.live,'session','system',['calendar']),
+                         m.proxy_commands(self.live,'session','system'))
+        calendar.chmod(0o755)
+        with self.assertRaisesRegex(m.DesktopError,'private live vdir'):m.read_manifest(self.link)
+        calendar.chmod(0o700)
+        self.value['calendar_dir']=str(self.root/'elsewhere');self.write_manifest()
+        with self.assertRaisesRegex(m.DesktopError,'private live vdir'):m.read_manifest(self.link)
+
+    def test_calendar_readiness_requires_current_owned_worker_and_initial_view_completion(self):
+        calendar=self.prepare_calendar();session=self.session()
+        session['calendar_bridge']={'pid':900,'start':901,'state':'S'}
+        with mock.patch.object(m,'alive',return_value=True):
+            self.assertFalse(m.calendar_status(self.value,session)['ready'])
+            (calendar/'status.json').write_text(json.dumps({'ready':True,'source_count':2,'component_count':5,'error_count':1,'degraded':True}))
+            state=m.calendar_status(self.value,session)
+            self.assertTrue(state['ready']);self.assertTrue(state['degraded'])
+            self.assertEqual(state['component_count'],5)
+        with mock.patch.object(m,'alive',return_value=False):
+            state=m.calendar_status(self.value,session)
+            self.assertFalse(state['ready']);self.assertIn('restart',state['reason'])
+
+    def test_calendar_loading_is_not_reported_as_ready_desktop_acceptance(self):
+        self.prepare_calendar();self.session()
+        for ready in (False,True):
+            with (mock.patch.object(m,'ipc',return_value='{"running":true}'),
+                  mock.patch.object(m,'calendar_status',return_value={'running':True,'ready':ready}),
+                  contextlib.redirect_stdout(io.StringIO()) as output):
+                self.assertEqual(m.dispatch(['status'],self.value),0)
+            self.assertEqual(json.loads(output.getvalue())['ready'],ready)
+
+    def test_calendar_failure_keeps_shell_and_cleanup_signals_only_owned_processes(self):
+        calendar=self.prepare_calendar()
+        (calendar/'status.json').write_text('{"ready":true}')
+        children=[];starts=[];closed=[]
+        class Child:
+            def __init__(self,pid,code=0):self.pid=pid;self.returncode=None;self.code=code;self.terminated=False
+            def poll(self):return self.returncode
+            def wait(self,timeout=None):self.returncode=self.code;return self.code
+            def terminate(self):self.terminated=True;self.returncode=0
+        def spawn(argv,**kwargs):
+            child=Child(1001+len(children),1 if '--output' in argv else 0)
+            children.append(child);starts.append((argv,kwargs))
+            if argv[0]=='xdg-dbus-proxy':Path(argv[2]).touch()
+            return child
+        real_close=os.close
+        def close(fd):
+            if fd>=1000000:closed.append(fd)
+            else:real_close(fd)
+        with (mock.patch.object(m,'require_session',return_value=self.niri),
+              mock.patch.object(m,'run',return_value=subprocess.CompletedProcess([],0,'b false\n')),
+              mock.patch.object(m,'identity',side_effect=lambda pid:dict(pid=pid,start=pid,state='S')),
+              mock.patch.object(m,'verify_proxy'),mock.patch.object(m.subprocess,'Popen',side_effect=spawn),
+              mock.patch.object(m,'stop_process',wraps=m.stop_process) as stop,
+              mock.patch.object(m.os,'pidfd_open',side_effect=lambda pid:1000000+pid),
+              mock.patch.object(m.os,'close',side_effect=close),
+              mock.patch.object(m.select,'select',side_effect=[([1001003],[],[]),([1001004],[],[])]) as select_call,
+              contextlib.redirect_stderr(io.StringIO()) as error):
+            self.assertEqual(m.shell(self.value),0)
+        self.assertEqual(select_call.call_count,2)
+        self.assertIn('shell remains running',error.getvalue())
+        self.assertFalse((calendar/'status.json').exists(),'stale calendar readiness must not survive restart')
+        self.assertEqual(starts[2][0],m.calendar_command(self.value))
+        self.assertEqual(starts[2][1]['env']['DBUS_SESSION_BUS_ADDRESS'],'unix:path=/real/session-bus')
+        self.assertEqual(starts[2][1]['env']['XDG_CONFIG_HOME'],'/home/test/.config')
+        self.assertEqual(starts[3][1]['env']['DBUS_SESSION_BUS_ADDRESS'],'unix:path='+str(self.live/'session-bus'))
+        self.assertFalse(children[2].terminated,'already-exited bridge was only reaped')
+        self.assertTrue(children[0].terminated and children[1].terminated)
+        self.assertEqual([call.args[0] for call in stop.call_args_list],list(reversed(children)))
+        self.assertEqual(set(closed),{1001001,1001002,1001003,1001004})
+        self.assertFalse((self.live/'session.json').exists())
+        self.assertEqual(json.loads((self.live/'processes.json').read_text())['calendar_bridge']['pid'],1003)
+
     def test_failed_runner_start_keeps_previous_live_session_record(self):
         old=self.session()
         (self.live/'processes.json').write_text(json.dumps(old))
