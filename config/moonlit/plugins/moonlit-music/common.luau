@@ -1,4 +1,5 @@
 local M = {}
+local ownedRequest = nil
 
 M.empty = {
   player = "", title = "", artist = "", album = "", status = "Stopped",
@@ -17,19 +18,20 @@ function M.text(value, fallback)
 end
 
 function M.title(data)
-  if data.player == nil or data.player == "" then return "Nothing playing" end
-  return M.text(data.title, "Title unavailable")
+  if data.player == nil or data.player == "" then return noctalia.tr("state.nothing") end
+  return M.text(data.title, noctalia.tr("state.no_title"))
 end
 
 function M.source(data)
   for _, source in ipairs(data.players or {}) do
     if source.bus == data.player then return M.text(source.name, source.bus) end
   end
-  return M.text(data.player, "No player connected")
+  return M.text(data.player, noctalia.tr("state.no_player"))
 end
 
 function M.artist(data)
-  return M.text(data.artist, data.player ~= "" and "Artist unavailable" or "Start music in your player to begin")
+  if data.player == nil or data.player == "" then return noctalia.tr("state.start") end
+  return M.text(data.artist, noctalia.tr("state.no_artist"))
 end
 
 function M.time(value)
@@ -44,24 +46,40 @@ function M.artPath(data)
   return nil
 end
 
+function M.releaseCommand()
+  if ownedRequest and noctalia.state.get("moonlit.command.owner") == ownedRequest then
+    noctalia.state.set("moonlit.command.owner", "")
+    noctalia.state.set("moonlit.command.pending", false)
+  end
+  ownedRequest = nil
+end
+
 function M.command(action, argument)
   if noctalia.state.get("moonlit.command.pending") == true then return end
+  -- Entry-local ownership survives shared state updates, while the serial stored
+  -- outside the VM prevents a reloaded entry from reusing its old request token.
+  local serial = (tonumber(noctalia.state.get("moonlit.command.serial")) or 0) + 1
+  local request = (M.commandOwner or "music") .. ":" .. tostring(serial)
+  noctalia.state.set("moonlit.command.serial", serial)
+  ownedRequest = request
+  noctalia.state.set("moonlit.command.owner", request)
   local argv = { "python3", noctalia.pluginDir() .. "/media_bridge.py", action }
   if argument ~= nil then table.insert(argv, tostring(argument)) end
   noctalia.state.set("moonlit.command.pending", true)
   noctalia.state.set("moonlit.command.error", "")
   local accepted = noctalia.runAsync(argv, function(result)
-    noctalia.state.set("moonlit.command.pending", false)
+    if ownedRequest ~= request or noctalia.state.get("moonlit.command.owner") ~= request then return end
     if result.exitCode ~= 0 then
       local response = noctalia.json.decode(result.stdout or "")
       local detail = type(response) == "table" and response.error or nil
       noctalia.state.set("moonlit.command.error", M.text(detail, M.text(result.stderr, "The player did not accept this action.")))
     end
+    M.releaseCommand()
     noctalia.state.set("moonlit.refresh", noctalia.nowMs())
   end)
   if not accepted then
-    noctalia.state.set("moonlit.command.pending", false)
     noctalia.state.set("moonlit.command.error", "Could not start the media bridge.")
+    M.releaseCommand()
   end
 end
 
@@ -75,16 +93,16 @@ function M.controls(data, large)
   return ui.row({ gap = large and 14 or 8, align = "center", justify = "center" }, {
     ui.button({ key = "previous", glyph = "media-prev", glyphSize = large and 23 or 18,
       width = large and 52 or 38, height = large and 52 or 38, variant = "ghost",
-      enabled = data.can_previous == true and not pending, tooltip = data.can_previous and "Previous track" or "Previous track unavailable",
+      enabled = data.can_previous == true and not pending, tooltip = data.can_previous and noctalia.tr("transport.previous") or noctalia.tr("transport.no_previous"),
       onClick = function() M.command("previous") end }),
     ui.button({ key = "toggle", glyph = data.status == "Playing" and "media-pause" or "media-play",
       glyphSize = large and 27 or 21, width = large and 64 or 46, height = large and 56 or 42,
       variant = "primary", enabled = M.canToggle(data) and not pending,
-      tooltip = data.status == "Playing" and "Pause" or "Play",
+      tooltip = data.status == "Playing" and noctalia.tr("transport.pause") or noctalia.tr("transport.play"),
       onClick = function() M.command("toggle") end }),
     ui.button({ key = "next", glyph = "media-next", glyphSize = large and 23 or 18,
       width = large and 52 or 38, height = large and 52 or 38, variant = "ghost",
-      enabled = data.can_next == true and not pending, tooltip = data.can_next and "Next track" or "Next track unavailable",
+      enabled = data.can_next == true and not pending, tooltip = data.can_next and noctalia.tr("transport.next") or noctalia.tr("transport.no_next"),
       onClick = function() M.command("next") end }),
   })
 end
@@ -97,7 +115,7 @@ function M.sourcePicker(data, width)
     table.insert(buses, source.bus)
     if source.bus == data.player then selected = index - 1 end
   end
-  if #names == 0 then names = { "No player connected" } end
+  if #names == 0 then names = { noctalia.tr("state.no_player") } end
   return ui.select({ key = "source", options = names, selectedIndex = selected,
     width = width, controlSize = "sm", enabled = #buses > 0,
     onChange = function(value)
@@ -115,12 +133,24 @@ function M.artwork(data, size)
   return ui.column({ key = "missing-art", width = size, height = size, align = "center", justify = "center",
     gap = 18, radius = 8, fill = "surface_variant/0.5", border = "secondary/0.2", borderWidth = 1 }, {
     ui.glyph({ name = "disc", size = math.floor(size * 0.35), color = "secondary/0.7" }),
-    ui.label({ text = "No artwork", fontSize = size > 100 and 16 or 10, color = "on_surface_variant" }),
+    ui.label({ text = noctalia.tr("art.none"), fontSize = size > 100 and 16 or 10, color = "on_surface_variant" }),
   })
 end
 
 function M.error(data)
   return M.text(noctalia.state.get("moonlit.command.error"), M.text(data.error, ""))
+end
+
+function M.errorRow(data, width, large)
+  local err = M.error(data)
+  return ui.row({ gap = 12, align = "center", visible = err ~= "" }, {
+    ui.label({ text = err, fontSize = large and 12 or 11, color = "error", maxWidth = width,
+      flexGrow = 1, maxLines = 2 }),
+    ui.button({ text = noctalia.tr("bridge.reconnect"), visible = data.bridge_stopped == true,
+      variant = "ghost", controlSize = "sm", onClick = function()
+        noctalia.state.set("moonlit.restart", noctalia.nowMs())
+      end }),
+  })
 end
 
 function M.watch(render)
