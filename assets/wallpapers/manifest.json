@@ -1,0 +1,48 @@
+{
+  "created": "2026-10-08",
+  "aspect_ratio": "16:9",
+  "workflow": {
+    "generation": "Built-in imagegen, independent composition and targeted refinement",
+    "generation_dimensions": [
+      1672,
+      941
+    ],
+    "super_resolution": "Real-ESRGAN ncnn Vulkan, realesrgan-x4plus-anime, 4x",
+    "super_resolution_dimensions": [
+      6688,
+      3764
+    ],
+    "final_resize": "Lanczos aspect-preserving cover resize and centered crop to 3840x2160",
+    "native_4k_generation": false
+  },
+  "reference_files": [
+    "docs/design-references/cozy-night-concept.png",
+    "docs/design-references/night-scenes-triptych-concept.png"
+  ],
+  "files": [
+    {
+      "file": "a-cozy-night-3840x2160.png",
+      "scene": "Cozy Night",
+      "width": 3840,
+      "height": 2160,
+      "color_space": "sRGB",
+      "sha256": "f2fbb59637688da7663bd309c996dc57a245ef9533267f753756a34ad0b16854"
+    },
+    {
+      "file": "b-quiet-street-3840x2160.png",
+      "scene": "Quiet Street",
+      "width": 3840,
+      "height": 2160,
+      "color_space": "sRGB",
+      "sha256": "f4d2b563c395d0d7caba368144ce9ad27c3d50dddb3f9845d071f499007d337f"
+    },
+    {
+      "file": "c-blue-hour-3840x2160.png",
+      "scene": "Blue Hour",
+      "width": 3840,
+      "height": 2160,
+      "color_space": "sRGB",
+      "sha256": "1ccf627e8cdffe6525131739510d5fc89e3ba746abb783d00b6ba6092e25719c"
+    }
+  ]
+}
