@@ -1,0 +1,134 @@
+/* Portal dialogs share the live Moonlit palette. GTK's built-in dark theme
+ * supplies the complete widget behavior; these rules add the desktop colors. */
+@import url("resource:///org/gtk/libgtk/theme/Adwaita/gtk-contained-dark.css");
+
+@define-color theme_bg_color #18131f;
+@define-color theme_fg_color #f1e8f1;
+@define-color theme_base_color #18131f;
+@define-color theme_text_color #f1e8f1;
+@define-color theme_selected_bg_color #433047;
+@define-color theme_selected_fg_color #f1e8f1;
+@define-color insensitive_bg_color #251d30;
+@define-color insensitive_fg_color #86758d;
+@define-color borders #59465f;
+@define-color unfocused_borders #44364c;
+
+window.background,
+dialog.background,
+filechooser {
+    background-color: #18131f;
+    color: #f1e8f1;
+    font-family: "Noto Sans", "Noto Sans CJK SC", sans-serif;
+    font-size: 14px;
+}
+
+headerbar,
+.titlebar,
+filechooser actionbar {
+    background: #251d30;
+    color: #f1e8f1;
+    border-color: #59465f;
+    box-shadow: none;
+}
+toolbar {
+    background: #251d30;
+    color: #f1e8f1;
+    border-color: #59465f;
+    box-shadow: none;
+}
+headerbar { min-height: 42px; padding: 6px 10px; }
+headerbar .title { font-weight: 600; }
+
+button {
+    background: #251d30;
+    color: #f1e8f1;
+    border: 1px solid #59465f;
+    border-radius: 8px;
+    padding: 6px 12px;
+    min-height: 24px;
+    box-shadow: none;
+    text-shadow: none;
+}
+button:hover { background: #36283e; border-color: #98718e; }
+button:active,
+button:checked { background: #433047; border-color: #e6abc8; }
+button:disabled { background: #251d30; color: #86758d; border-color: #44364c; }
+button.suggested-action {
+    background: #e6abc8;
+    color: #18131f;
+    border-color: #e6abc8;
+    font-weight: 600;
+}
+button.suggested-action:hover { background: #f1c1d8; border-color: #f1c1d8; }
+button.suggested-action:disabled { background: #59465f; color: #c3b3c8; border-color: #59465f; }
+button.flat { background: transparent; border-color: transparent; }
+button.flat:hover { background: #36283e; border-color: #59465f; }
+
+entry,
+searchentry {
+    background: #18131f;
+    color: #f1e8f1;
+    border: 1px solid #59465f;
+    border-radius: 8px;
+    min-height: 28px;
+    padding: 4px 9px;
+    box-shadow: none;
+}
+entry:focus { border-color: #e6abc8; box-shadow: none; }
+entry selection { background: #433047; color: #f1e8f1; }
+entry image { color: #c3b3c8; }
+
+filechooser box.view { background: #251d30; }
+
+filechooser .sidebar,
+placessidebar,
+placessidebar viewport,
+placessidebar list {
+    background: #251d30;
+    color: #c3b3c8;
+}
+placessidebar row { padding: 3px 6px; border-radius: 6px; }
+placessidebar row:hover { background: #36283e; }
+placessidebar row:selected { background: #433047; color: #e6abc8; }
+placessidebar row image { color: #bdaee5; }
+placessidebar row:selected image { color: #e6abc8; }
+
+treeview.view,
+iconview.view,
+list,
+viewport,
+textview.view,
+textview.view text {
+    background-color: #18131f;
+    color: #f1e8f1;
+}
+treeview.view { padding: 5px 6px; border-color: #44364c; }
+treeview.view:selected,
+iconview.view:selected,
+list row:selected { background: #433047; color: #f1e8f1; }
+treeview.view header button {
+    background: #251d30;
+    color: #c3b3c8;
+    border: 0;
+    border-bottom: 1px solid #59465f;
+    border-radius: 0;
+    padding: 6px;
+    min-height: 20px;
+}
+treeview.view header button:hover { background: #36283e; color: #f1e8f1; }
+
+paned > separator,
+separator { background: #44364c; }
+scrolledwindow { border-color: #44364c; }
+scrollbar { background: transparent; }
+scrollbar slider { background: #59465f; border-radius: 5px; border: 0; min-width: 6px; min-height: 6px; }
+scrollbar slider:hover { background: #98718e; }
+
+menu,
+popover,
+tooltip { background: #251d30; color: #f1e8f1; border: 1px solid #59465f; }
+menuitem:hover,
+popover modelbutton:hover { background: #433047; color: #e6abc8; }
+check:checked,
+radio:checked { background: #e6abc8; color: #18131f; border-color: #e6abc8; }
+*:focus { outline-color: #e6abc8; outline-style: dashed; outline-offset: -3px; }
