@@ -108,6 +108,7 @@ NIRI_FILES = (
     ("niri/terminal-bin/xdg-terminal-exec", "config/desktop/terminal-bin/xdg-terminal-exec"),
     ("niri/wallpaper.json", "config/desktop/wallpaper.json"),
     ("environment.d/60-dotfiles-language.conf", "platforms/linux/environment.d/60-dotfiles-language.conf"),
+    ("xdg-desktop-portal/niri-portals.conf", "config/xdg-desktop-portal/niri-portals.conf"),
     ("waybar/balanced.json", "config/waybar/balanced.json"),
     ("waybar/focus.json", "config/waybar/focus.json"),
     ("waybar/performance.json", "config/waybar/performance.json"),

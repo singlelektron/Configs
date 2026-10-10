@@ -56,6 +56,15 @@ journalctl --user -b -u dotfiles-niri-waybar.service
 journalctl --user -b -u dotfiles-niri-session-events.service
 ```
 
+Niri 的 `xdg-desktop-portal/niri-portals.conf` 让文件和文件夹选择器直接使用 GTK 后端，
+修复 ChatGPT 新建 Project 的 **Add folders** 因 GNOME 文件选择器委托断开而没有反应的问题。
+屏幕共享继续使用 GNOME 后端；配置文件只匹配 Niri 会话，GNOME 会话沿用自己的门户配置。
+已登录 Niri 时，部署后运行以下命令重新读取配置，再点击 **Add folders** 验证文件夹选择器：
+
+```sh
+systemctl --user restart xdg-desktop-portal.service
+```
+
 Fcitx5 通过 XDG 自动启动入口运行，已有的输入法列表、快捷键和词库留在本机。
 新机器用 `fcitx5-configtool` 选择中文输入法，并实际检查 GTK、Qt 和终端输入；
 不要把现有机器的整个输入法状态目录复制进仓库。

@@ -124,6 +124,8 @@ class DeploymentTests(unittest.TestCase):
     def test_niri_apply_restore_preserves_neighboring_state_and_overrides(self):
         niri = self.original("niri/config.kdl", "old niri")
         waybar = self.original("waybar/balanced.json", "old bar")
+        portals = self.original("xdg-desktop-portal/niri-portals.conf", "old Niri portals")
+        gnome_portals = self.original("xdg-desktop-portal/gnome-portals.conf", "personal GNOME portals")
         local = self.original("dotfiles-local/niri.kdl", "private outputs")
         state = self.original("niri/private-state.json", "private state")
         unrelated_unit = self.original("systemd/user/other.service", "other service")
@@ -131,10 +133,13 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(deploy.load_manifest(backup)["desktop"], "niri")
         for target, source in deploy.NIRI_FILES:
             self.assertEqual(os.readlink(self.config / target), str(self.repo / source))
+        self.assertEqual(gnome_portals.read_text(), "personal GNOME portals")
         self.assertIsNone(self.install(desktop="niri"))
         deploy.restore(backup, apply=True)
         self.assertEqual(niri.read_text(), "old niri")
         self.assertEqual(waybar.read_text(), "old bar")
+        self.assertEqual(portals.read_text(), "old Niri portals")
+        self.assertEqual(gnome_portals.read_text(), "personal GNOME portals")
         self.assertEqual(local.read_text(), "private outputs")
         self.assertEqual(state.read_text(), "private state")
         self.assertEqual(unrelated_unit.read_text(), "other service")
