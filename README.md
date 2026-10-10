@@ -10,7 +10,7 @@ macOS 与 Arch Linux 共用的 Kitty / Neovim 配置，以及可选的 Arch Niri
 - AI agent 在独立终端工作；Neovim 检查外部文件变化，保留有未保存修改时的冲突提示。
 - Niri：二次元壁纸、四个工作区、三档信息栏、中文输入、网课常亮与独立锁屏；[完整使用说明](docs/niri.md)。
 - Moonlit Bloom：支持隔离预览和可恢复的受控会话迁移；[使用与恢复说明](docs/moonlit-preview.md)。
-- 硬件监控：`sysmon` 查看紧凑 CPU / GPU / RAM 图表，Niri 窗口约占四分之一桌面；`sysmon gpu` 查看显存与 GPU 进程，沿用现有配色，[使用与部署说明](docs/hardware-monitor.md)。
+- 硬件监控：`sysmon` 查看紧凑 CPU / GPU / RAM 图表，可用 Niri 原有操作排列到四分之一桌面大小；`sysmon gpu` 查看显存与 GPU 进程，沿用现有配色，[使用与部署说明](docs/hardware-monitor.md)。
 - 本地差异放在仓库外，旧配置和 Neovim 插件数据保留。不管理 shell、SSH、Git 身份或默认登录会话。
 
 ## 新机器恢复
@@ -53,6 +53,7 @@ sysmon --filter python --window             # 独立窗口观察 Python 进程
 ```
 
 默认每 3 秒刷新且不扫描进程；`sysmon proc` / `sysmon all` 按需展开进程列表或完整总览。
+`sysmon --window` 作为普通 Kitty 窗口打开，沿用字体与外观；用现有合并、拆出和大小调整按键排列，图表随尺寸调整。
 默认入口需要构建的 `btop-view`，系统 `btop` 不包含精简补丁；构建依赖见指南。
 Arch 另含 GPU 视图的 `nvtop` 和传感器视图的 `lm_sensors`。
 Niri 的 `Super+M` / `Super+Shift+M` 需要按 [硬件监控指南](docs/hardware-monitor.md#启用-niri-快捷键)

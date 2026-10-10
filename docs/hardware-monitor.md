@@ -1,8 +1,9 @@
 # 终端硬件监控
 
-`sysmon` 默认只显示 CPU、GPU、RAM、磁盘与网络的关键参数和曲线。Niri 下用 `Super+M`
-或 `sysmon --window` 打开约四分之一桌面大小的浮动窗口，方便同时观察本地程序。
-窗口沿用现有字体家族与暗玫瑰 / Moonlit Bloom 配色，使用 11 号字号，隐藏单窗口标签栏并关闭背景模糊。
+`sysmon` 默认只显示 CPU、GPU、RAM、磁盘与网络的关键参数和曲线。直接运行时使用当前终端；
+`Super+M` 或 `sysmon --window` 打开普通 Kitty 窗口，沿用现有字体、透明度与暗玫瑰 / Moonlit Bloom 配色。
+窗口参与 Niri 的正常平铺，可用原有按键上下排列、合并、拆出和调整大小，适合缩到四分之一桌面观察本地程序。
+高度有限时 GPU 保留利用率、温度、功率、频率和显存用量；放大后恢复显存曲线及编解码图表。
 
 数据采集与绘图使用第三方 [btop 1.4.7](https://github.com/aristocratos/btop/tree/v1.4.7)，本仓库提供
 Python 启动器、主题和一份小型 C++ 补丁：移除菜单、帮助、设置及进程控制入口，按 `Esc` 直接退出。
@@ -129,7 +130,9 @@ niri msg action load-config-file --path "${XDG_CONFIG_HOME:-$HOME/.config}/niri/
 
 这条 include 从已有的本地覆盖引入独立入口，也适用于 Niri 配置链接到固定 Moonlit release 的会话；
 无需改写该 release 或会话 transaction。真实会话的 `Mod` 是 Super，嵌套 Niri 通常是 Alt。
-监控窗口默认浮动在右下角，宽、高各为可用桌面的二分之一；可以用 Niri 常规操作移动或调整大小。
+监控窗口默认打开为半屏宽的普通平铺列。用现有 `Super+[` / `Super+]` 合并或拆出窗口，
+用 `Super+Shift+-` / `Super+Shift+=` 调整高度；操作与其他应用相同，
+详见 [Niri 窗口排列](niri-keybindings.md#怎么把两个窗口上下排列)。
 恢复监控部署前，先从个人文件移除这条 include 并验证 / 重载 Niri，再恢复部署备份，避免留下失效 include。
 个人文件的追加内容不在 `deploy.py` 的监控备份范围内。
 

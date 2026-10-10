@@ -8,13 +8,10 @@ binds {
     }
 }
 
-// Half the usable width and half the height: one quarter of the desktop.
-// Match only monitor titles; ordinary Kitty windows keep their layout.
+// Participate in the normal Niri columns and stacked-window layout.
+// Use the existing consume/expel actions to arrange this window.
 window-rule {
     match app-id="^kitty$" title="^(Hardware|GPU) Monitor$"
-    open-floating true
+    open-floating false
     default-column-width { proportion 0.5; }
-    default-window-height { proportion 0.5; }
-    default-floating-position x=16 y=16 relative-to="bottom-right"
-    background-effect { blur false; xray false; }
 }

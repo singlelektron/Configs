@@ -166,6 +166,8 @@ class SysmonLaunchTests(unittest.TestCase):
         self.assertEqual(record["config_home"], str(self.config))
         self.assertEqual(record["state_home"], str(self.state))
         self.assertTrue({"--config", "-c", "--class", "--name"}.isdisjoint(argv))
+        overrides = [argv[index + 1].split("=", 1)[0] for index, value in enumerate(argv) if value == "--override"]
+        self.assertTrue({"font_size", "background_opacity", "tab_bar_min_tabs"}.isdisjoint(overrides))
         self.assertIn(str(LAUNCHER.resolve()), argv)
         self.assertIn("io", argv)
         self.assertEqual(argv[argv.index("--filter") + 1], "my program")

@@ -50,7 +50,90 @@
  			const string update = to_string(Config::getI("update_ms")) + "ms";
  			out += Mv::to(button_y, x + width - update.size() - 8) + title_left + Fx::b + Theme::c("hi_fg") + "- " + Theme::c("title") + update
  				+ Theme::c("hi_fg") + " +" + Fx::ub + title_right;
-@@ -1683,7 +1678,6 @@
+@@ -998,8 +993,9 @@
+ #ifdef GPU_SUPPORT
+ namespace Gpu {
+ 	int width_p = 100, height_p = 32;
+-	int min_width = 41, min_height = 8;
++	int min_width = 41, min_height = 7;
+ 	int width = 41, total_height;
++	bool compact = false;
+ 	vector<int> x_vec = {}, y_vec = {}, b_height_vec = {};
+ 	int b_width;
+ 	vector<int> b_x_vec = {}, b_y_vec = {};
+@@ -1041,7 +1037,7 @@
+ 		auto& graph_bg = Symbols::graph_symbols.at((graph_symbol == "default" ? Config::getS("graph_symbol") + "_up" : graph_symbol + "_up")).at(6);
+         auto single_graph = !Config::getB("gpu_mirror_graph");
+ 		string out;
+-		int height = gpu_b_height_offsets[index] + 4;
++		int height = compact ? min_height : gpu_b_height_offsets[index] + 4;
+ 		out.reserve(width * height);
+ 
+ 		//* Redraw elements not needed to be updated every cycle
+@@ -1067,12 +1063,12 @@
+ 			if (gpu.supported_functions.temp_info)
+ 				temp_graph = Draw::Graph{6, 1, "temp", gpu.temp, graph_symbol, false, false, gpu.temp_max, -23};
+ 			if (gpu.supported_functions.pwr_usage)
+-				pwr_meter = Draw::Meter{b_width - (gpu.supported_functions.pwr_state and gpu.pwr_state != 32 ? 25 : 12), "cached"};
+-			if (gpu.supported_functions.mem_utilization)
++				pwr_meter = Draw::Meter{b_width - (not compact and gpu.supported_functions.pwr_state and gpu.pwr_state != 32 ? 25 : 12), "cached"};
++			if (not compact and gpu.supported_functions.mem_utilization)
+ 				mem_util_graph = Draw::Graph{b_width/2 - 1, 2, "free", gpu.mem_utilization_percent, graph_symbol, 0, 0, 100, 4}; // offset so the graph isn't empty at 0-5% utilization
+-			if (gpu.supported_functions.mem_used and gpu.supported_functions.mem_total)
++			if (not compact and gpu.supported_functions.mem_used and gpu.supported_functions.mem_total)
+ 				mem_used_graph = Draw::Graph{b_width/2 - 2, 2 + 2*(gpu.supported_functions.mem_utilization), "used", safeVal(gpu.gpu_percent, "gpu-vram-totals"s), graph_symbol};
+-			if (gpu.supported_functions.encoder_utilization)
++			if (not compact and gpu.supported_functions.encoder_utilization)
+ 				enc_meter = Draw::Meter{b_width/2 - 10, "cpu"};
+ 		}
+ 
+@@ -1110,13 +1106,13 @@
+ 			out += Mv::to(b_y + rows_used, b_x + 1) + Theme::c("main_fg") + Fx::b + "PWR " + pwr_meter(safeVal(gpu.gpu_percent, "gpu-pwr-totals"s).back())
+ 				+ Theme::g("cached").at(clamp(safeVal(gpu.gpu_percent, "gpu-pwr-totals"s).back(), 0ll, 100ll))
+ 				+ fmt::format("{:>5.{}f}", gpu.pwr_usage / 1000.0, gpu.pwr_usage < 10'000 ? 2 : gpu.pwr_usage < 100'000 ? 1 : 0) + Theme::c("main_fg") + 'W';
+-			if (gpu.supported_functions.pwr_state and gpu.pwr_state != 32) // NVML_PSTATE_UNKNOWN; unsupported or non-nvidia card
++			if (not compact and gpu.supported_functions.pwr_state and gpu.pwr_state != 32) // NVML_PSTATE_UNKNOWN; unsupported or non-nvidia card
+ 				out += std::string(" P-state: ") + (gpu.pwr_state > 9 ? "" : " ") + 'P' + Theme::g("cached").at(clamp(gpu.pwr_state, 0ll, 100ll)) + to_string(gpu.pwr_state);
+ 			rows_used++;
+ 		}
+ 
+ 		//? Encode and Decode meters
+-		bool drawnEncDec = gpu.supported_functions.encoder_utilization and gpu.supported_functions.decoder_utilization;
++		bool drawnEncDec = not compact and gpu.supported_functions.encoder_utilization and gpu.supported_functions.decoder_utilization;
+ 		if (drawnEncDec) {
+ 			out += Mv::to(b_y + rows_used, b_x +1) + Theme::c("main_fg") + Fx::b + "ENC " + enc_meter(gpu.encoder_utilization)
+ 				+ Theme::g("cpu").at(clamp(gpu.encoder_utilization, 0ll, 100ll)) + rjust(to_string(gpu.encoder_utilization), 4) + Theme::c("main_fg") + '%'
+@@ -1125,7 +1121,19 @@
+ 			rows_used++;
+ 		}
+ 
+-		if (gpu.supported_functions.mem_total or gpu.supported_functions.mem_used) {
++		if (compact and (gpu.supported_functions.mem_total or gpu.supported_functions.mem_used)) {
++			// Short terminals keep the metrics in one VRAM row; the large
++			// utilization and memory histories return when space is available.
++			out += Mv::to(b_y + rows_used, b_x + 1) + Theme::c("main_fg") + Fx::b + "VRAM " + Fx::ub;
++			if (gpu.supported_functions.mem_used)
++				out += floating_humanizer(gpu.mem_used);
++			if (gpu.supported_functions.mem_total) {
++				if (gpu.supported_functions.mem_used) out += " / ";
++				out += floating_humanizer(gpu.mem_total);
++			}
++			if (gpu.supported_functions.mem_total and gpu.supported_functions.mem_used)
++				out += "  " + to_string(safeVal(gpu.gpu_percent, "gpu-vram-totals"s).back()) + '%';
++		} else if (gpu.supported_functions.mem_total or gpu.supported_functions.mem_used) {
+ 			out += Mv::to(b_y + rows_used, b_x);
+ 			if (gpu.supported_functions.mem_total and gpu.supported_functions.mem_used) {
+ 				string used_memory_string = floating_humanizer(gpu.mem_used);
+@@ -1171,7 +1179,7 @@
+ 
+ 		//? PCIe link throughput
+ 		// Negative RX/TX means that they are manually disabled, not that they are unsupported
+-		if (gpu.supported_functions.pcie_txrx and not (gpu.pcie_rx < 0 or gpu.pcie_tx < 0)) {
++		if (not compact and gpu.supported_functions.pcie_txrx and not (gpu.pcie_rx < 0 or gpu.pcie_tx < 0)) {
+ 			string tx_string = floating_humanizer(gpu.pcie_tx, 0, 1, 0, 1);
+ 			string rx_string = floating_humanizer(gpu.pcie_rx, 0, 1, 0, 1);
+ 			out += Mv::to(b_y + height - 3, b_x+2) + Theme::c("div_line")
+@@ -1683,7 +1691,6 @@
  		auto& graph_symbol = (tty_mode ? "tty" : Config::getS("graph_symbol_proc"));
  		auto& graph_bg = Symbols::graph_symbols.at((graph_symbol == "default" ? Config::getS("graph_symbol") + "_up" : graph_symbol + "_up")).at(6);
  		auto mem_bytes = Config::getB("proc_mem_bytes");
@@ -58,7 +141,7 @@
  		auto show_graphs = Config::getB("proc_cpu_graphs");
  		const auto pause_proc_list = Config::getB("pause_proc_list");
  		auto follow_process = Config::getB("follow_process");
-@@ -1813,22 +1807,6 @@
+@@ -1813,22 +1820,6 @@
  				const string hi_color = (not alive or selected > 0 ? t_color : Theme::c("hi_fg"));
  				int mouse_x = d_x + 2;
  				out += Mv::to(d_y, d_x + 1);
@@ -81,7 +164,7 @@
  				if (width > 77) {
  				    fmt::format_to(std::back_inserter(out), "{}{}{}{}{}{}{}{}",
  				    	title_left, follow_process ? Fx::b : "",
-@@ -1913,7 +1891,7 @@
+@@ -1913,7 +1904,7 @@
  				Input::mouse_mappings["left"] = {y, sort_pos + 1, 1, 2};
  				Input::mouse_mappings["right"] = {y, sort_pos + sort_len + 3, 1, 2};
  
@@ -90,7 +173,7 @@
  			const string down_button = (is_last_process_in_list ? Theme::c("inactive_fg") : Theme::c("hi_fg")) + Symbols::down;
  			const bool is_up_button_highlighted = selected != 0 or (follow_process and followed_pid == Config::getI("detailed_pid") and should_selection_return_to_followed);
  			const string up_button = (is_up_button_highlighted ? Theme::c("hi_fg") : Theme::c("inactive_fg")) + Symbols::up;
-@@ -1924,22 +1902,6 @@
+@@ -1924,22 +1915,6 @@
  				+ title_left_down + Fx::b + t_color + "info " + hi_color + Symbols::enter + Fx::ub + title_right_down;
  				if (selected > 0) Input::mouse_mappings["info_enter"] = {y + height - 1, mouse_x, 1, 6};
  				mouse_x += 8;
@@ -113,7 +196,22 @@
  			if (width > 72) {
  			    fmt::format_to(std::back_inserter(out), "{}{}{}{}{}{}{}{}",
  			    	title_left_down, follow_process ? Fx::b : "",
-@@ -2288,19 +2250,20 @@
+@@ -2267,6 +2242,14 @@
+ 			using namespace Gpu;
+ 			total_height += 4 + gpu_b_height_offsets[shown_panels[i]];
+ 		}
++		// Resizing a tiled terminal chooses the smallest useful GPU view.
++		// Recompute this on every resize so the full panel returns naturally.
++		const int other_min_height = (Cpu::shown ? Cpu::min_height : 0)
++			+ (boxes.contains("proc") ? Proc::min_height
++				: (boxes.contains("mem") ? Mem::min_height : 0)
++				  + (boxes.contains("net") ? Net::min_height : 0));
++		Gpu::compact = Term::height < other_min_height + Gpu::total_height;
++		if (Gpu::compact) Gpu::total_height = Gpu::shown * Gpu::min_height;
+ 	#endif
+ 		Mem::shown = boxes.contains("mem");
+ 		Net::shown = boxes.contains("net");
+@@ -2288,19 +2271,20 @@
  			if (Gpu::shown != 0 and not (Mem::shown or Net::shown or Proc::shown)) {
  				height = Term::height - Gpu::total_height - gpus_extra_height;
  			} else {
@@ -138,7 +236,7 @@
  		#endif
  			if (b_columns * (21 + 12 * show_temp) < width - (width / 3)) {
  				b_column_size = 2;
-@@ -2365,10 +2328,10 @@
+@@ -2365,17 +2349,17 @@
  				redraw[i] = true;
  				int height = 0;
  				width = Term::width;
@@ -152,7 +250,15 @@
  				else
  					if (not (Mem::shown or Net::shown or Proc::shown))
  						height = (Term::height - total_height) / (Gpu::shown - i) + (i == 0) * ((Term::height - total_height) % (Gpu::shown - i));
-@@ -2409,6 +2372,8 @@
+ 					else
+ 						height = max(min_height, (int)ceil((double)Term::height * height_p/Gpu::shown / 100));
+ 
+-				b_height_vec[i] = gpu_b_height_offsets[shown_panels[i]] + 2;
++				b_height_vec[i] = compact ? min_height - 2 : gpu_b_height_offsets[shown_panels[i]] + 2;
+ 				height += (height+Cpu::height == Term::height-1);
+ 				height = max(height, b_height_vec[i] + 2);
+ 				x_vec[i] = 1; y_vec[i] = 1 + total_height + (not Config::getB("cpu_bottom"))*Cpu::shown*Cpu::height;
+@@ -2409,6 +2393,8 @@
  		#else
  			height = floor(static_cast<double>(Term::height) * (100 - Cpu::height_p * Cpu::shown - Net::height_p * Net::shown) / 100);
  		#endif
@@ -181,3 +287,16 @@
  						"{mv8}{hiFg}q {mainFg}| Quit",
  						"banner"_a = Draw::banner_gen(y, 0, true),
  						"titleFg"_a = Theme::c("title"), "b"_a = Fx::b, "hiFg"_a = Theme::c("hi_fg"), "mainFg"_a = Theme::c("main_fg"),
+--- a/src/btop_tools.cpp
++++ b/src/btop_tools.cpp
+@@ -140,8 +140,8 @@
+ 		if (proc) height += Proc::min_height;
+ 		else height += (mem ? Mem::min_height : 0) + (net ? Net::min_height : 0);
+ 	#ifdef GPU_SUPPORT
+-		for (int i = 0; i < gpu; i++)
+-			height += Gpu::gpu_b_height_offsets[i] + 4;
++		// The adaptive GPU panel can replace its optional details at this height.
++		height += gpu * Gpu::min_height;
+ 	#endif
+ 
+ 		return { width, height };

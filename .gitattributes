@@ -1,0 +1,2 @@
+# Unified-diff context lines contain a prefix space before upstream tabs.
+config/sysmon/btop-view.patch whitespace=-space-before-tab,-blank-at-eol

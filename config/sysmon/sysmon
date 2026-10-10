@@ -97,8 +97,6 @@ def main(argv: list[str] | None = None) -> int:
         if args.window:
             command = [executable("kitty"), "--title", "Hardware Monitor" if args.view != "gpu" else "GPU Monitor",
                        "--override", "initial_window_width=150c", "--override", "initial_window_height=40c",
-                       "--override", "font_size=11",
-                       "--override", "tab_bar_min_tabs=2", "--override", "background_opacity=0.96",
                        sys.executable, str(Path(__file__).resolve()), args.view, "--interval", str(args.interval), "--theme", args.theme]
             if args.filter:
                 command += ["--filter", args.filter]
