@@ -4,6 +4,7 @@ set -euo pipefail
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$repo_dir"
 python3 -m unittest discover -s tests -p 'test_*.py' -v
+python3 scripts/moonlit-theme.py --check
 bash -n scripts/install-tools.sh scripts/check.sh
 sh -n config/desktop/terminal-bin/xdg-terminal-exec
 
@@ -147,5 +148,14 @@ PY
   fi
 else
   echo 'SKIP desktop parser checks: Niri is not installed on this Linux host, or this is macOS.'
+fi
+
+# Optional native Noctalia checks: a wrapper can supply an isolated library prefix.
+# Only validates/lints; never starts a shell or contacts the user's session bus.
+if [[ -n "${NOCTALIA_PREVIEW_BIN:-}" ]]; then
+  mkdir -p "$test_root/noctalia-data/noctalia/plugins"
+  cp -R config/moonlit/plugins/. "$test_root/noctalia-data/noctalia/plugins/"
+  env NOCTALIA_DATA_HOME="$test_root/noctalia-data" "$NOCTALIA_PREVIEW_BIN" config validate config/moonlit/settings.toml
+  "$NOCTALIA_PREVIEW_BIN" plugins lint config/moonlit/plugins/*
 fi
 echo 'Offline checks passed. This does not verify a graphical session or live LSP attachment.'

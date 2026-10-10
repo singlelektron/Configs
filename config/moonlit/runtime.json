@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "upstream_version": "5.2.1",
+  "arch_package_version": "5.2.1-1",
+  "architecture": "x86_64",
+  "license": "MIT (Noctalia; dependencies retain their own package licenses)",
+  "scope": "Four-package supplement for the inspected Arch Linux snapshot, not a complete distribution or dependency resolver. Existing compatible system libraries and the Arch package signing keyring are required.",
+  "verification": "Pinned SHA-256 plus pacman-key detached signatures before archive inspection and extraction.",
+  "packages": [
+    {
+      "name": "libqalculate",
+      "file": "libqalculate-5.13.1-1-x86_64.pkg.tar.zst",
+      "sha256": "33e21ae16ba76d2ba96c022f6c2bade1c04ccf2a74dfcb5902cf57dcd1b6ba59",
+      "url": "https://archive.archlinux.org/packages/l/libqalculate/libqalculate-5.13.1-1-x86_64.pkg.tar.zst",
+      "signature_url": "https://archive.archlinux.org/packages/l/libqalculate/libqalculate-5.13.1-1-x86_64.pkg.tar.zst.sig"
+    },
+    {
+      "name": "noctalia",
+      "file": "noctalia-5.2.1-1-x86_64.pkg.tar.zst",
+      "sha256": "34cf6ba6d4f894127827279922cd175cc9f102a7010f4e8760fbe48c62faf603",
+      "url": "https://archive.archlinux.org/packages/n/noctalia/noctalia-5.2.1-1-x86_64.pkg.tar.zst",
+      "signature_url": "https://archive.archlinux.org/packages/n/noctalia/noctalia-5.2.1-1-x86_64.pkg.tar.zst.sig"
+    },
+    {
+      "name": "sdbus-cpp",
+      "file": "sdbus-cpp-2.3.1-1-x86_64.pkg.tar.zst",
+      "sha256": "c57ce276078cfcc3b9ef55056ad8ef47f2cf35ffe6c1bf56bfabb6e8a55ded33",
+      "url": "https://archive.archlinux.org/packages/s/sdbus-cpp/sdbus-cpp-2.3.1-1-x86_64.pkg.tar.zst",
+      "signature_url": "https://archive.archlinux.org/packages/s/sdbus-cpp/sdbus-cpp-2.3.1-1-x86_64.pkg.tar.zst.sig"
+    },
+    {
+      "name": "tomlplusplus",
+      "file": "tomlplusplus-3.4.0-2-x86_64.pkg.tar.zst",
+      "sha256": "adcfd4ca14c0d0480f84bc686964b88f129381d5e7ed7bc670473a7ac547fb71",
+      "url": "https://archive.archlinux.org/packages/t/tomlplusplus/tomlplusplus-3.4.0-2-x86_64.pkg.tar.zst",
+      "signature_url": "https://archive.archlinux.org/packages/t/tomlplusplus/tomlplusplus-3.4.0-2-x86_64.pkg.tar.zst.sig"
+    }
+  ],
+  "sources": [
+    "https://archlinux.org/packages/extra/x86_64/noctalia/",
+    "https://github.com/noctalia-dev/noctalia/releases/tag/v5.2.1"
+  ]
+}

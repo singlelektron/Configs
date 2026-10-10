@@ -1,0 +1,228 @@
+# Moonlit Bloom — isolated Noctalia 5.2.1 preview profile.
+# Run with a private Wayland output, private D-Bus, and GSETTINGS_BACKEND=memory.
+# This is not a replacement for the user's live lock/notification/session setup.
+[accessibility]
+ui_scale = 1.0
+
+[shell]
+# English UI is independent of the system's regional formats and input methods.
+lang = "en"
+date_format = "%x" # The date representation from the session's LC_TIME.
+font_family = "Noto Sans CJK SC"
+corner_radius_scale = 1.1
+offline_mode = true
+external_ip_enabled = false
+telemetry_enabled = false
+setup_wizard_enabled = false
+clipboard_enabled = false
+clipboard_keep_from_closed_apps = false
+polkit_agent = false
+screen_time_enabled = false
+show_location = false
+niri_overview_type_to_launch_enabled = false
+button_borders = false
+card_borders = false
+input_borders = true
+
+[shell.animation]
+enabled = true
+speed = 1.2
+
+[shell.shadow]
+alpha = 0.32
+
+[shell.panel]
+transparency_mode = "glass"
+borders = true
+shadow = true
+launcher_placement = "floating"
+launcher_position = "center"
+control_center_placement = "floating"
+control_center_position = "top_left"
+wallpaper_placement = "floating"
+wallpaper_position = "top_right"
+floating_offset = 14
+list_item_background = false
+
+[shell.launcher]
+app_grid = false
+compact = false
+categories = false
+fetch_exchange_rates = false
+show_app_origin_indicator = false
+pinned = ["kitty", "firefox", "org.gnome.Nautilus"]
+
+[shell.greeter_sync]
+auto_sync = false
+
+[shell.session]
+actions = []
+
+[theme]
+mode = "dark"
+shell_mode = "dark"
+source = "custom"
+custom_palette = "MoonlitBloom"
+
+[theme.templates]
+enable_builtin_templates = false
+enable_community_templates = false
+builtin_ids = []
+community_ids = []
+
+[bar]
+order = ["default"]
+
+[bar.default]
+position = "top"
+thickness = 38
+margin_edge = 10
+margin_ends = 18
+margin_opposite_edge = 6
+padding = 12
+widget_spacing = 8
+font_scale = 1.0
+font_weight = 500
+background_opacity = 0.88
+border = "outline"
+border_width = 1
+radius = 14
+concave_edge_corners = false
+capsule = false
+compositor_blur = true
+shadow = true
+reserve_space = true
+start = ["moonlit_controls", "workspaces", "active_window"]
+center = ["moonlit_music"]
+end = ["launcher", "moonlit_updates", "volume", "date", "clock"]
+
+[bar.default.actions]
+middle = "none"
+
+[widget.workspaces]
+type = "workspaces"
+style = "regular"
+show_labels = true
+label_source = "id"
+pill_scale = 0.74
+active_pill_size = 1.75
+inactive_pill_size = 1.0
+focused_color = "primary"
+occupied_color = "secondary"
+empty_color = "surface_variant"
+urgent_color = "error"
+show_all_outputs = false
+
+[widget.active_window]
+type = "active_window"
+icon_size = 16
+max_length = 280
+min_length = 80
+title_scroll = "none"
+
+[widget.moonlit_controls]
+type = "custom_button"
+glyph = "flower"
+tooltip = "Control center"
+
+[widget.moonlit_controls.actions]
+left = "panel-toggle control-center"
+right = "panel-toggle control-center network"
+
+[widget.moonlit_music]
+type = "dotfiles/moonlit-music:bar"
+
+[widget.moonlit_updates]
+type = "dotfiles/moonlit-updates:updates"
+
+[widget.volume]
+type = "volume"
+device = "output"
+show_label = true
+
+[widget.volume.actions]
+left = "panel-toggle control-center audio"
+right = "volume-mute"
+scroll_up = "volume-up 5%"
+scroll_down = "volume-down 5%"
+
+[widget.date]
+type = "clock"
+format = "%x" # Use the same regional date as the control center.
+timezone = "" # Follow the system's local timezone.
+
+[widget.clock]
+type = "clock"
+# Keep the existing compact 24-hour/minute display; %X can add seconds and units.
+format = "{:%H:%M}"
+timezone = "" # Follow the system's local timezone.
+
+[control_center]
+sidebar = "full"
+sidebar_section = "full"
+width = 740
+show_shortcut_labels = true
+show_session_button = false
+hidden_tabs = ["monitor", "system", "weather", "calendar", "notifications", "screen-time", "power"]
+
+[[control_center.shortcuts]]
+type = "dotfiles/moonlit-network:network"
+[[control_center.shortcuts]]
+type = "bluetooth"
+[[control_center.shortcuts]]
+type = "audio"
+[[control_center.shortcuts]]
+type = "caffeine"
+[[control_center.shortcuts]]
+type = "media"
+[[control_center.shortcuts]]
+type = "wallpaper"
+
+[notification]
+enable_daemon = false
+
+[lockscreen]
+enabled = false
+lock_before_suspend = false
+
+[idle.behavior.lock]
+enabled = false
+[idle.behavior.screen-off]
+enabled = false
+[idle.behavior.lock-and-suspend]
+enabled = false
+
+[calendar]
+enabled = false
+[calendar.reminders]
+enabled = false
+[weather]
+enabled = false
+effects = false
+[location]
+auto_locate = false
+[nightlight]
+enabled = false
+[audio]
+enable_sounds = false
+[system.monitor]
+enabled = false
+[wallpaper]
+transition = ["fade"]
+transition_duration = 200
+transition_on_startup = false
+[wallpaper.automation]
+enabled = false
+[desktop_widgets]
+enabled = false
+[dock]
+enabled = false
+[brightness]
+enable_ddcutil = false
+
+# shell.offline_mode gates HTTP, but upstream git catalog refresh is separate.
+# Explicit empty sources suppress the built-in official/community catalogs.
+[plugins]
+enabled = ["dotfiles/moonlit-music", "dotfiles/moonlit-updates", "dotfiles/moonlit-network"]
+source = []
+auto_update = "none"

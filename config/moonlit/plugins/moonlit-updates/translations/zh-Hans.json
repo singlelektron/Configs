@@ -1,0 +1,18 @@
+{
+  "count": "更新 · {count}",
+  "checking": "检查中…",
+  "tooltip": "仅 Arch 官方仓库 · 点击检查 · 右键查看",
+  "no-upgrade": "不会自动升级",
+  "read-error": "无法读取更新状态",
+  "invalid-status": "更新程序返回了无效状态",
+  "start-error": "无法启动更新检查程序",
+  "review-error": "无法打开更新详情",
+  "terminal": {
+    "title": "Arch Linux · 官方仓库更新",
+    "checked": "上次成功检查：",
+    "unknown": "尚未成功检查更新。",
+    "count": "有 {count} 个软件包可更新",
+    "upgrade": "完整升级系统可运行：sudo pacman -Syu",
+    "scope": "不包含 AUR 软件包。"
+  }
+}
