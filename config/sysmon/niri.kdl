@@ -1,0 +1,17 @@
+// Opt-in monitor profile. Include from dotfiles-local/niri.kdl after deployment.
+binds {
+    Mod+M hotkey-overlay-title="Hardware monitor · CPU / GPU / RAM" {
+        spawn-sh "\"$HOME/.local/bin/sysmon\" --window";
+    }
+    Mod+Shift+M hotkey-overlay-title="GPU monitor · Processes / VRAM" {
+        spawn-sh "\"$HOME/.local/bin/sysmon\" --window gpu";
+    }
+}
+
+// Participate in the normal Niri columns and stacked-window layout.
+// Use the existing consume/expel actions to arrange this window.
+window-rule {
+    match app-id="^kitty$" title="^(Hardware|GPU) Monitor$"
+    open-floating false
+    default-column-width { proportion 0.5; }
+}

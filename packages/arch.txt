@@ -5,6 +5,9 @@ lazygit
 python
 neovim
 kitty
+btop
+nvtop
+lm_sensors
 ripgrep
 fd
 uv

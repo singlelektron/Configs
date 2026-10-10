@@ -29,16 +29,20 @@ class DeploymentTests(unittest.TestCase):
         core = ("config/kitty/kitty.conf", "config/kitty/theme.conf",
                 "config/nvim/init.lua", "config/lazygit/config.yml",
                 "platforms/macos/kitty.conf", "platforms/linux/kitty.conf")
-        for name in (*core, *(source for _, source in deploy.NIRI_FILES)):
+        monitor_sources = ("config/sysmon/sysmon", *(source for _, source in deploy.MONITOR_FILES),
+                           deploy.MONITOR_NIRI_FILE[1])
+        for name in (*core, *(source for _, source in deploy.NIRI_FILES), *monitor_sources):
             path = self.repo / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(name, encoding="utf-8")
+        (self.repo / "config/sysmon/sysmon").chmod(0o755)
         self.output = contextlib.redirect_stdout(io.StringIO())
         self.output.__enter__()
         self.addCleanup(self.output.__exit__, None, None, None)
 
-    def install(self, apply=True, platform="linux", desktop=None):
-        return deploy.install(self.repo, self.config, self.state, platform, apply, desktop)
+    def install(self, apply=True, platform="linux", desktop=None, monitor=False):
+        return deploy.install(self.repo, self.config, self.state, platform, apply, desktop,
+                              monitor=monitor, monitor_home=self.home if monitor else None)
 
     def original(self, relative, contents="original"):
         path = self.config / relative
@@ -228,6 +232,183 @@ class DeploymentTests(unittest.TestCase):
         with mock.patch.object(deploy.sys, "platform", "darwin"), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(deploy.main(["--desktop", "niri", "--home", str(self.home)]), 1)
         self.assertFalse(self.home.exists())
+
+    def test_monitor_dry_run_creates_nothing(self):
+        self.install(monitor=True, apply=False)
+        self.assertFalse(self.home.exists())
+
+    def test_monitor_apply_idempotence_restore_preserves_active_desktop(self):
+        kitty = self.original("kitty/theme.conf", "active Moonlit theme")
+        niri = self.original("niri/config.kdl", "active immutable release")
+        local = self.original("dotfiles-local/niri.kdl", "personal output settings")
+        state = self.original("sysmon/private-state.json", "personal monitor state")
+        old_config = self.original("sysmon/btop.conf", "original monitor settings")
+        command = self.home / ".local/bin/sysmon"
+        command.parent.mkdir(parents=True)
+        command.write_text("original command")
+        command.chmod(0o755)
+        backup = self.install(monitor=True)
+        manifest = deploy.load_manifest(backup)
+        self.assertTrue(manifest["monitor"])
+        self.assertEqual(manifest["monitor_home"], str(self.home))
+        self.assertEqual(manifest["monitor_bin"], str(command.parent))
+        self.assertNotIn("desktop", manifest)
+        self.assertEqual(len(manifest["entries"]), 5)
+        self.assertEqual(os.readlink(command), str(self.repo / "config/sysmon/sysmon"))
+        self.assertTrue(os.access(command, os.X_OK))
+        self.assertEqual(os.readlink(self.config / "sysmon/niri.kdl"),
+                         str(self.repo / "config/sysmon/niri.kdl"))
+        self.assertIsNone(self.install(monitor=True))
+        self.assertEqual(len(list(backup.parent.iterdir())), 1)
+        for path, contents in ((kitty, "active Moonlit theme"), (niri, "active immutable release"),
+                               (local, "personal output settings"), (state, "personal monitor state")):
+            self.assertEqual(path.read_text(), contents)
+            self.assertFalse(path.is_symlink())
+        deploy.restore(backup)
+        self.assertTrue(command.is_symlink())
+        deploy.restore(backup, apply=True)
+        self.assertEqual(command.read_text(), "original command")
+        self.assertEqual(stat.S_IMODE(command.stat().st_mode), 0o755)
+        self.assertEqual(old_config.read_text(), "original monitor settings")
+        self.assertFalse((self.config / "sysmon/themes/moonlit-bloom.theme").exists())
+        self.assertFalse((self.config / "sysmon/niri.kdl").exists())
+        self.assertEqual(state.read_text(), "personal monitor state")
+        self.assertEqual(kitty.read_text(), "active Moonlit theme")
+        self.assertEqual(niri.read_text(), "active immutable release")
+
+    def test_monitor_custom_xdg_keeps_bin_under_explicit_home(self):
+        config, state = self.root / "custom config", self.root / "custom state"
+        backup = deploy.install(self.repo, config, state, "linux", apply=True,
+                                monitor=True, monitor_home=self.home)
+        command = self.home / ".local/bin/sysmon"
+        self.assertTrue(command.is_symlink())
+        self.assertTrue((config / "sysmon/btop.conf").is_symlink())
+        self.assertFalse((self.root / ".local/bin/sysmon").exists())
+        self.assertFalse(self.config.exists())
+        # Restore must use saved destinations, even in another HOME or XDG context.
+        with mock.patch.object(Path, "home", side_effect=AssertionError("restore consulted HOME")):
+            deploy.restore(backup, apply=True)
+        self.assertFalse(command.exists())
+        self.assertFalse((config / "sysmon/btop.conf").exists())
+
+    def test_monitor_macos_omits_niri_and_preserves_other_settings(self):
+        niri = self.original("niri/config.kdl", "unrelated Niri file")
+        # macOS must not even require the Linux-only include source.
+        (self.repo / "config/sysmon/niri.kdl").unlink()
+        backup = self.install(platform="macos", monitor=True)
+        self.assertEqual(len(deploy.load_manifest(backup)["entries"]), 4)
+        self.assertFalse((self.config / "sysmon/niri.kdl").exists())
+        self.assertFalse((self.config / "kitty").exists())
+        self.assertEqual(niri.read_text(), "unrelated Niri file")
+        deploy.restore(backup, apply=True)
+        self.assertEqual(niri.read_text(), "unrelated Niri file")
+        self.assertFalse((self.home / ".local/bin/sysmon").exists())
+
+    def test_monitor_is_opt_in_and_legacy_manifests_still_restore(self):
+        backup = self.install()
+        manifest = json.loads((backup / "manifest.json").read_text())
+        self.assertNotIn("monitor", manifest)
+        self.assertNotIn("monitor_home", manifest)
+        self.assertNotIn("monitor_bin", manifest)
+        self.assertFalse((self.home / ".local/bin").exists())
+        self.assertFalse((self.config / "sysmon").exists())
+        deploy.restore(backup, apply=True)
+        self.assertFalse((self.config / "nvim").exists())
+
+    def test_monitor_missing_source_or_executable_preflights_before_writes(self):
+        original = self.original("sysmon/btop.conf", "personal settings")
+        source = self.repo / "config/moonlit/btop.theme"
+        source.unlink()
+        with self.assertRaisesRegex(deploy.DeploymentError, "Missing configuration source"):
+            self.install(monitor=True)
+        self.assertEqual(original.read_text(), "personal settings")
+        self.assertFalse((self.home / ".local/bin").exists())
+        self.assertFalse(self.state.exists())
+        source.write_text("restored source")
+        (self.repo / "config/sysmon/sysmon").chmod(0o644)
+        with self.assertRaisesRegex(deploy.DeploymentError, "not executable"):
+            self.install(monitor=True)
+        self.assertFalse((self.home / ".local/bin").exists())
+        self.assertFalse(self.state.exists())
+
+    def test_monitor_symlinked_bin_parent_preflights_before_writes(self):
+        outside = self.root / "outside bin"
+        outside.mkdir()
+        (self.home / ".local").mkdir(parents=True)
+        (self.home / ".local/bin").symlink_to(outside, target_is_directory=True)
+        with self.assertRaisesRegex(deploy.DeploymentError, "symlinked parent"):
+            self.install(monitor=True)
+        self.assertEqual(list(outside.iterdir()), [])
+        self.assertFalse(self.config.exists())
+        self.assertFalse(self.state.exists())
+
+    def test_monitor_overlapping_config_and_bin_preflights_before_writes(self):
+        config = self.home / ".local/bin"
+        with self.assertRaisesRegex(deploy.DeploymentError, "destination paths overlap"):
+            deploy.install(self.repo, config, self.state, "linux", apply=True,
+                           monitor=True, monitor_home=self.home)
+        self.assertFalse(self.home.exists())
+
+    def test_monitor_restore_conflict_preserves_all_other_links(self):
+        backup = self.install(monitor=True)
+        command = self.home / ".local/bin/sysmon"
+        command.unlink()
+        command.write_text("intervening command")
+        with self.assertRaisesRegex(deploy.DeploymentError, "intervening changes"):
+            deploy.restore(backup, apply=True)
+        self.assertEqual(command.read_text(), "intervening command")
+        self.assertTrue((self.config / "sysmon/btop.conf").is_symlink())
+        self.assertTrue((self.config / "sysmon/themes/moonlit-bloom.theme").is_symlink())
+
+    def test_monitor_manifest_destination_and_scope_tampering_is_rejected(self):
+        backup = self.install(monitor=True)
+        path = backup / "manifest.json"
+        manifest = json.loads(path.read_text())
+        for updates in ({"monitor": False}, {"monitor": "yes"},
+                        {"monitor_home": str(self.root / "other home")},
+                        {"monitor_bin": str(self.root / "other bin")},
+                        {"desktop": "niri"}, {"platform": "macos"}):
+            with self.subTest(updates=updates):
+                path.write_text(json.dumps(dict(manifest, **updates)))
+                with self.assertRaises(deploy.DeploymentError):
+                    deploy.restore(backup, apply=True)
+                self.assertTrue((self.home / ".local/bin/sysmon").is_symlink())
+                self.assertTrue((self.config / "sysmon/niri.kdl").is_symlink())
+
+    def test_monitor_requires_explicit_home_and_rejects_desktop_combination(self):
+        with self.assertRaisesRegex(deploy.DeploymentError, "explicit home"):
+            deploy.install(self.repo, self.config, self.state, "linux", apply=True, monitor=True)
+        with self.assertRaisesRegex(deploy.DeploymentError, "cannot be combined"):
+            self.install(monitor=True, desktop="niri")
+        self.assertFalse(self.home.exists())
+
+    def test_cli_monitor_home_overrides_xdg_and_is_monitor_only(self):
+        env = {"XDG_CONFIG_HOME": str(self.root / "external config"),
+               "XDG_STATE_HOME": str(self.root / "external state")}
+        with mock.patch.dict(os.environ, env), mock.patch.object(deploy, "install") as install:
+            self.assertEqual(deploy.main(["--monitor", "--home", str(self.home)]), 0)
+        args, kwargs = install.call_args
+        self.assertEqual(args[1:3], (self.config, self.state))
+        self.assertEqual(kwargs, {"monitor": True, "monitor_home": self.home})
+        self.assertFalse(self.home.exists())
+
+    def test_cli_monitor_uses_home_bin_with_custom_xdg_paths(self):
+        config, state = self.root / "external config", self.root / "external state"
+        env = {"HOME": str(self.home), "XDG_CONFIG_HOME": str(config), "XDG_STATE_HOME": str(state)}
+        with mock.patch.dict(os.environ, env), mock.patch.object(deploy, "install") as install:
+            self.assertEqual(deploy.main(["--monitor"]), 0)
+        args, kwargs = install.call_args
+        self.assertEqual(args[1:3], (config, state))
+        self.assertEqual(kwargs, {"monitor": True, "monitor_home": self.home})
+        self.assertFalse(self.home.exists())
+
+    def test_cli_rejects_monitor_with_desktop_or_restore(self):
+        for args in (["--monitor", "--desktop", "niri"],
+                     ["--monitor", "--restore", str(self.root)]):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    deploy.main(args)
+                self.assertEqual(error.exception.code, 2)
 
     def test_lazygit_config_restore_preserves_private_state(self):
         config = self.original("lazygit/config.yml", "personal Git UI")
