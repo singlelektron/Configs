@@ -104,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
             return subprocess.call([executable("nvtop"), "--config-file", str(state / "nvtop.ini"),
                                     "--gpu-info", "--encode-hide=-1", "--delay", str(max(1, args.interval // 100))])
         if args.view == "sensors":
-            return subprocess.call([executable("watch"), "--exec", "--color", "--interval", str(args.interval / 1000), executable("sensors")])
+            return subprocess.call([executable("watch"), "--exec", "--color", "--interval", str(args.interval / 1000),
+                                    executable("sensors"), "-A"])
         return run_btop(args, config_root())
     except (OSError, RuntimeError) as error:
         print(f"sysmon: {error}", file=sys.stderr)

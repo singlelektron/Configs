@@ -189,7 +189,7 @@ class SysmonLaunchTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         argv = self.launched()["argv"]
         self.assertIn("--exec", argv, "watch must execute the literal command without a shell")
-        self.assertEqual(argv[-1], str(sensors))
+        self.assertEqual(argv[-2:], [str(sensors), "-A"])
         self.assertEqual(argv[argv.index("--interval") + 1], "0.5")
 
     def test_noninteractive_use_reports_window_alternative_without_launching(self):
