@@ -92,7 +92,9 @@ if [[ "$(uname -s)" == Linux ]] && command -v niri >/dev/null 2>&1; then
   else
     echo 'SKIP Fuzzel parser check: fuzzel is not installed.'
   fi
-  python3 - "$test_root/.config/waybar/style.css" <<'PY'
+  python3 - "$test_root/.config/waybar/style.css" \
+    "$test_root/.config/xdg-desktop-portal/data/themes/MoonlitPortal/gtk-3.0/gtk.css" \
+    "$test_root/.config/xdg-desktop-portal/data/themes/MoonlitPortal/gtk-3.0/gtk-dark.css" <<'PY'
 import sys
 try:
     import gi
@@ -102,12 +104,13 @@ except (ImportError, ValueError):
     print("SKIP Waybar CSS parsing: Python GObject / GTK 3 is not installed.")
     sys.exit(0)
 
-errors = []
-provider = Gtk.CssProvider()
-provider.connect("parsing-error", lambda _, section, error: errors.append(str(error)))
-provider.load_from_path(sys.argv[1])
-assert not errors, "Waybar CSS errors: " + "; ".join(errors)
-print("Waybar GTK CSS parsing: PASS")
+for path, label in zip(sys.argv[1:], ("Waybar", "GTK portal", "GTK portal dark")):
+    errors = []
+    provider = Gtk.CssProvider()
+    provider.connect("parsing-error", lambda _, section, error: errors.append(str(error)))
+    provider.load_from_path(path)
+    assert not errors, label + " CSS errors: " + "; ".join(errors)
+    print(label + " GTK CSS parsing: PASS")
 PY
 
   python3 - "$test_root/.config/niri/panel.css" <<'PY'
@@ -134,6 +137,11 @@ PY
       systemd-analyze --user --man=no --recursive-errors=no verify \
       "$test_root/.config/systemd/user/"dotfiles-niri-*.service
     echo 'Niri user services static verification: PASS'
+    if [[ -f /usr/lib/systemd/user/xdg-desktop-portal-gtk.service ]]; then
+      env HOME="$test_root" XDG_CONFIG_HOME="$test_root/.config" \
+        systemd-analyze --user --man=no --recursive-errors=no verify xdg-desktop-portal-gtk.service
+      echo 'GTK portal service with theme drop-in static verification: PASS'
+    fi
   else
     echo 'SKIP systemd unit validation: systemd-analyze is not installed.'
   fi
