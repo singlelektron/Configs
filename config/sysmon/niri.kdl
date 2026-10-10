@@ -1,0 +1,9 @@
+// Opt-in monitor profile. Include from dotfiles-local/niri.kdl after deployment.
+binds {
+    Mod+M hotkey-overlay-title="Hardware monitor · CPU / GPU / RAM" {
+        spawn-sh "\"$HOME/.local/bin/sysmon\" --window";
+    }
+    Mod+Shift+M hotkey-overlay-title="GPU monitor · Processes / VRAM" {
+        spawn-sh "\"$HOME/.local/bin/sysmon\" --window gpu";
+    }
+}

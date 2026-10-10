@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Open the themed hardware monitor in this terminal or a new Kitty window."""
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+def config_root() -> Path:
+    return Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config")
+
+
+def state_root() -> Path:
+    return Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "sysmon"
+
+
+def executable(name: str) -> str:
+    system = shutil.which(name)
+    if system:
+        return system
+    # Optional user installation of signed Arch packages; no sudo at runtime.
+    local = Path.home() / ".local/share/dotfiles/tools/sysmon" / name / "usr/bin" / name
+    if local.is_file() and os.access(local, os.X_OK):
+        return str(local)
+    raise RuntimeError(f"{name} is missing. Install the monitor tools listed in docs/hardware-monitor.md.")
+
+
+def selected_theme(choice: str, config: Path) -> str:
+    if choice != "auto":
+        return "moonlit-bloom" if choice == "moonlit" else "dark-rose"
+    try:
+        kitty = (config / "kitty/theme.conf").read_text()
+    except OSError:
+        kitty = ""
+    moonlit = re.search(r"^background\s+#18131f\s*$", kitty, re.MULTILINE | re.IGNORECASE)
+    return "moonlit-bloom" if moonlit else "dark-rose"
+
+
+def run_btop(args: argparse.Namespace, config: Path) -> int:
+    monitor = config / "sysmon"
+    template = monitor / "btop.conf"
+    # Also allow running from this checkout before deployment.
+    source = Path(__file__).resolve().parent
+    if not template.is_file():
+        monitor, template = source, source / "btop.conf"
+    theme = selected_theme(args.theme, config)
+    themes = monitor / "themes"
+    theme_file = themes / (theme + ".theme")
+    if theme == "moonlit-bloom" and not theme_file.is_file():
+        theme_file = source.parent / "moonlit/btop.theme"
+    if not theme_file.is_file():
+        raise RuntimeError(f"Monitor theme is missing: {theme_file}. Run scripts/deploy.py --monitor --apply.")
+    text = template.read_text()
+    text = re.sub(r'^color_theme\s*=.*$', 'color_theme = "' + theme_file.name + '"', text, flags=re.MULTILINE)
+    if args.view == "io":
+        text = re.sub(r'^io_mode\s*=.*$', "io_mode = true", text, flags=re.MULTILINE)
+    with tempfile.TemporaryDirectory(prefix="sysmon-") as temporary:
+        runtime = Path(temporary)
+        conf = runtime / "btop.conf"
+        conf.write_text(text)
+        # btop may create its own config/themes directory even with --config.
+        # Confine those writes to this invocation; logs stay outside Git.
+        env = dict(os.environ, XDG_CONFIG_HOME=str(runtime), XDG_STATE_HOME=str(state_root()))
+        command = [executable("btop"), "--config", str(conf), "--themes-dir", str(theme_file.parent),
+                   "--update", str(args.interval)]
+        if args.filter:
+            command += ["--filter", args.filter]
+        return subprocess.call(command, env=env)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__, epilog="q exits btop/nvtop; Ctrl+C exits the sensors view.")
+    parser.add_argument("view", nargs="?", choices=("all", "gpu", "io", "sensors"), default="all",
+                        help="all: CPU/GPU/RAM/disks/network/processes; gpu: GPU processes; io: disk curves; sensors: temperatures/fans")
+    parser.add_argument("--window", "-w", action="store_true", help="open a new Kitty window")
+    parser.add_argument("--filter", "-f", help="initial btop process filter, e.g. python or your program name")
+    parser.add_argument("--interval", type=int, default=2000, metavar="MS", help="refresh interval in milliseconds (default: 2000)")
+    parser.add_argument("--theme", choices=("auto", "moonlit", "rose"), default="auto", help="follow the current Kitty palette by default")
+    args = parser.parse_args(argv)
+    if args.interval < 100:
+        parser.error("--interval must be at least 100 milliseconds")
+    if args.filter and args.view in ("gpu", "sensors"):
+        parser.error("--filter is available in the all and io views")
+    try:
+        if args.window:
+            command = [executable("kitty"), "--title", "Hardware Monitor" if args.view != "gpu" else "GPU Monitor",
+                       "--override", "initial_window_width=150c", "--override", "initial_window_height=52c",
+                       sys.executable, str(Path(__file__).resolve()), args.view, "--interval", str(args.interval), "--theme", args.theme]
+            if args.filter:
+                command += ["--filter", args.filter]
+            # Kitty inherits its normal config, active desktop theme and app id.
+            return subprocess.call(command)
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            raise RuntimeError("An interactive terminal is required. Use sysmon --window to open Kitty.")
+        if args.view == "gpu":
+            state = state_root()
+            state.mkdir(parents=True, exist_ok=True)
+            return subprocess.call([executable("nvtop"), "--config-file", str(state / "nvtop.ini"),
+                                    "--gpu-info", "--encode-hide=-1", "--delay", str(max(1, args.interval // 100))])
+        if args.view == "sensors":
+            return subprocess.call([executable("watch"), "--exec", "--color", "--interval", str(args.interval / 1000), executable("sensors")])
+        return run_btop(args, config_root())
+    except (OSError, RuntimeError) as error:
+        print(f"sysmon: {error}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        return 130
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

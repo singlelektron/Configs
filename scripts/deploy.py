@@ -125,9 +125,36 @@ NIRI_FILES = (
 )
 
 
-def entries_for(repo, config, platform, desktop=None):
+MONITOR_FILES = (
+    ("sysmon/btop.conf", "config/sysmon/btop.conf"),
+    ("sysmon/themes/dark-rose.theme", "config/sysmon/themes/dark-rose.theme"),
+    ("sysmon/themes/moonlit-bloom.theme", "config/moonlit/btop.theme"),
+)
+MONITOR_NIRI_FILE = ("sysmon/niri.kdl", "config/sysmon/niri.kdl")
+
+
+def monitor_paths(home):
+    if home is None:
+        raise DeploymentError("Monitor deployment requires an explicit home directory.")
+    home = absolute_path(home)
+    return home, home / ".local/bin"
+
+
+def entries_for(repo, config, platform, desktop=None, *, monitor=False, monitor_home=None):
     if platform not in ("macos", "linux"):
         raise DeploymentError("Only macOS and Linux are supported.")
+    if not isinstance(monitor, bool):
+        raise DeploymentError("Unsupported monitor profile; expected a boolean.")
+    if monitor and desktop is not None:
+        raise DeploymentError("The monitor-only profile cannot be combined with a desktop profile.")
+    if monitor:
+        _, bindir = monitor_paths(monitor_home)
+        pairs = [(bindir / "sysmon", repo / "config/sysmon/sysmon")]
+        pairs.extend((config / target, repo / source) for target, source in MONITOR_FILES)
+        if platform == "linux":
+            target, source = MONITOR_NIRI_FILE
+            pairs.append((config / target, repo / source))
+        return pairs
     if desktop not in (None, "niri"):
         raise DeploymentError("Unsupported desktop profile; expected niri.")
     if desktop and platform != "linux":
@@ -201,20 +228,33 @@ def move_preserving(source, target, prepare=None):
             shutil.rmtree(source)
 
 
-def install(repo, config, state, platform, apply=False, desktop=None):
+def install(repo, config, state, platform, apply=False, desktop=None, *, monitor=False, monitor_home=None):
     repo = repo.resolve()
-    pairs = entries_for(repo, config, platform, desktop)
+    # Keep the legacy call shape for baseline/session adapters that restrict
+    # entries_for to their independently pinned desktop file allowlists.
+    if monitor:
+        pairs = entries_for(repo, config, platform, desktop, monitor=monitor, monitor_home=monitor_home)
+    else:
+        if not isinstance(monitor, bool):
+            raise DeploymentError("Unsupported monitor profile; expected a boolean.")
+        pairs = entries_for(repo, config, platform, desktop)
     backup_root = state / "dotfiles/backups"
     changed = []
     # Preflight every entry before any directories, links, or backups are created.
     check_parents(backup_root / "placeholder")
     if within(backup_root, repo):
         raise DeploymentError("Backups must be stored outside the repository.")
+    for index, (target, _) in enumerate(pairs):
+        for other, _ in pairs[index + 1:]:
+            if within(target, other) or within(other, target):
+                raise DeploymentError(f"Managed destination paths overlap: {target} and {other}")
     for target, source in pairs:
         check_parents(target)
         expected_directory = target.name == "nvim"
         if not (source.is_dir() if expected_directory else source.is_file()):
             raise DeploymentError(f"Missing configuration source: {source}")
+        if monitor and target.name == "sysmon" and not os.access(source, os.X_OK):
+            raise DeploymentError(f"Monitor command is not executable: {source}")
         if within(source, target) or within(target, source):
             raise DeploymentError(f"Source and destination overlap: {target}")
         if within(backup_root, target) or within(target, backup_root):
@@ -244,6 +284,9 @@ def install(repo, config, state, platform, apply=False, desktop=None):
                 "platform": platform, "entries": changed, "restored": False}
     if desktop:
         manifest["desktop"] = desktop
+    if monitor:
+        home, bindir = monitor_paths(monitor_home)
+        manifest.update(monitor=True, monitor_home=str(home), monitor_bin=str(bindir))
     save_manifest(directory, manifest)
     try:
         for entry in changed:
@@ -277,8 +320,20 @@ def load_manifest(directory):
             raise ValueError("unsupported manifest version or status")
         repo = absolute_path(manifest["repo"])
         config = absolute_path(manifest["config"])
-        expected = {str(target): str(source) for target, source in
-                    entries_for(repo, config, manifest["platform"], manifest.get("desktop"))}
+        monitor = manifest.get("monitor", False)
+        if not isinstance(monitor, bool):
+            raise ValueError("invalid monitor profile")
+        if monitor:
+            home, bindir = monitor_paths(manifest["monitor_home"])
+            if absolute_path(manifest["monitor_bin"]) != bindir:
+                raise ValueError("unexpected monitor command directory")
+            pairs = entries_for(repo, config, manifest["platform"], manifest.get("desktop"),
+                                monitor=True, monitor_home=home)
+        else:
+            if "monitor_home" in manifest or "monitor_bin" in manifest:
+                raise ValueError("monitor destinations without a monitor profile")
+            pairs = entries_for(repo, config, manifest["platform"], manifest.get("desktop"))
+        expected = {str(target): str(source) for target, source in pairs}
         seen = set()
         for index, entry in enumerate(manifest["entries"]):
             target = entry["target"]
@@ -368,21 +423,30 @@ def restore(directory, apply=False):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="perform the planned changes (default: dry run)")
-    parser.add_argument("--home", type=Path, help="use HOME/.config and HOME/.local/state, ignoring XDG variables")
+    parser.add_argument("--home", type=Path, help="use HOME/.config, HOME/.local/state and HOME/.local/bin, ignoring XDG variables")
     parser.add_argument("--restore", type=Path, metavar="BACKUP_DIR", help="restore a deployment from its backup directory")
-    parser.add_argument("--desktop", choices=("niri",), help="also deploy the optional Linux desktop files")
+    profile = parser.add_mutually_exclusive_group()
+    profile.add_argument("--desktop", choices=("niri",), help="also deploy the optional Linux desktop files")
+    profile.add_argument("--monitor", action="store_true", help="deploy only the sysmon command, monitor themes and optional Linux Niri include")
     args = parser.parse_args(argv)
     if args.restore and args.home:
         parser.error("--restore reads destinations from its manifest; omit --home")
     if args.restore and args.desktop:
         parser.error("--restore reads its desktop profile from the manifest; omit --desktop")
+    if args.restore and args.monitor:
+        parser.error("--restore reads its monitor profile from the manifest; omit --monitor")
     try:
         if args.restore:
             restore(args.restore, args.apply)
         else:
             platform = "macos" if sys.platform == "darwin" else "linux" if sys.platform.startswith("linux") else "unsupported"
             config, state = locations(args.home)
-            install(Path(__file__).resolve().parents[1], config, state, platform, args.apply, args.desktop)
+            if args.monitor:
+                home = Path(args.home).expanduser().resolve() if args.home else Path.home().resolve()
+                install(Path(__file__).resolve().parents[1], config, state, platform, args.apply,
+                        monitor=True, monitor_home=home)
+            else:
+                install(Path(__file__).resolve().parents[1], config, state, platform, args.apply, args.desktop)
     except (DeploymentError, OSError) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1

@@ -70,16 +70,17 @@ class MoonlitThemeTests(unittest.TestCase):
             self.assertEqual(self.run_generator(root, "--check").returncode, 0)
 
     def test_check_detects_drift_without_overwriting_it(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            destination = self.make_root(root)
-            self.assertEqual(self.run_generator(root).returncode, 0)
-            changed = destination / "nvim-theme.lua"
-            changed.write_text("-- handwritten preview change\n")
-            result = self.run_generator(root, "--check")
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("nvim-theme.lua", result.stderr)
-            self.assertEqual(changed.read_text(), "-- handwritten preview change\n")
+        for name in ("nvim-theme.lua", "btop.theme"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                destination = self.make_root(root)
+                self.assertEqual(self.run_generator(root).returncode, 0)
+                changed = destination / name
+                changed.write_text("# handwritten preview change\n")
+                result = self.run_generator(root, "--check")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(name, result.stderr)
+                self.assertEqual(changed.read_text(), "# handwritten preview change\n")
 
     def test_checked_in_theme_has_no_drift(self):
         result = self.run_generator(ROOT, "--check")
