@@ -1,29 +1,36 @@
 # 终端硬件监控
 
-`sysmon` 在当前终端打开带曲线的 btop 总览；需要边运行程序边观察时，用桌面快捷键或
-`--window` 打开独立 Kitty 窗口。总览与 I/O 视图沿用现有字体、透明背景和暗玫瑰 / Moonlit Bloom
-配色，CPU、GPU、内存、磁盘与网络保持各自清晰的图表。
+`sysmon` 默认只显示 CPU、GPU、RAM、磁盘与网络的关键参数和曲线。Niri 下用 `Super+M`
+或 `sysmon --window` 打开约四分之一桌面大小的浮动窗口，方便同时观察本地程序。
+窗口沿用现有字体家族与暗玫瑰 / Moonlit Bloom 配色，使用 11 号字号，隐藏单窗口标签栏并关闭背景模糊。
+
+数据采集与绘图使用第三方 [btop 1.4.7](https://github.com/aristocratos/btop/tree/v1.4.7)，本仓库提供
+Python 启动器、主题和一份小型 C++ 补丁：移除菜单、帮助、设置及进程控制入口，按 `Esc` 直接退出。
+不需要重写 Rust；默认关闭进程采集、PCIe 速率轮询和重复 GPU 信息，并降低刷新频率。
 
 ## 日常打开
 
 | 命令 / 按键 | 用途 |
 | --- | --- |
-| `sysmon` 或 `sysmon all` | CPU、GPU、RAM、磁盘、网络与进程总览 |
+| `sysmon` | 紧凑参数视图，不扫描进程列表 |
+| `sysmon proc` | CPU、GPU、RAM 与进程列表 |
+| `sysmon all` | CPU、GPU、RAM、磁盘、网络与进程总览；适合放大窗口 |
 | `sysmon gpu` | nvtop：GPU 曲线、显存与使用 GPU 的进程；Arch 可选工具 |
 | `sysmon io` | btop：启动时展开磁盘读写曲线，观察加载数据、编译和缓存 |
 | `sysmon sensors` | 定时刷新传感器读数，查看温度、风扇和电压；Arch 可选工具 |
-| `sysmon --filter python` | 总览中先筛选 Python 进程；换成自己程序的名称也可以 |
-| `sysmon --window` | 在独立 Kitty 窗口打开总览 |
+| `sysmon --filter python` | 自动打开进程视图并筛选 Python；可换成自己的程序名称 |
+| `sysmon --window` | 在独立 Kitty 窗口打开紧凑参数视图 |
 | `sysmon gpu --window` | 在独立 Kitty 窗口打开 GPU 视图 |
-| `Super+M` | 打开总览窗口，需先启用下面的可选 Niri include |
+| `Super+M` | 打开紧凑参数窗口，需先启用下面的可选 Niri include |
 | `Super+Shift+M` | 打开 GPU 窗口，同上 |
 
-默认每 **2000 ms** 刷新；`sysmon --interval 1000` 改为每秒，单位是毫秒，最小为 100 ms。
-参数也可组合，例如 `sysmon io --filter python --window --interval 1000`。
-`--filter` 仅适用于 `all` 和 `io`，只筛选进程列表；上方 CPU / GPU / RAM 图表仍是整机数值。
+默认每 **3000 ms** 刷新；`sysmon --interval 1000` 改为每秒，单位是毫秒，最小为 100 ms。
+参数也可组合，例如 `sysmon --filter python --window --interval 1000`。
+进程筛选只作用于列表；CPU / GPU / RAM 图表仍是整机数值。
 GPU 模式刷新间隔按 100 ms 步长取整。更高刷新率会增加监控程序自己的开销。
 
-在 btop 和 nvtop 中按 `q` 退出；`Ctrl+C` 也可结束监控。
+在参数视图中按 `Esc` 或 `q` 退出；正在输入进程筛选时，`Esc` 先取消输入。
+nvtop 使用自己的按键与界面，按 `q` 退出；`Ctrl+C` 也可结束监控。
 传感器视图使用 `watch sensors`，按 `Ctrl+C` 退出。该视图提供读数列表，曲线看总览或 GPU 视图。
 已运行程序不会随监控窗口退出。
 
@@ -48,10 +55,10 @@ GPU 任务另开 `sysmon gpu`，按进程名或 PID 对照 GPU 利用率与显�
 | Network | 当前网卡的上传 / 下载曲线与累计流量 |
 | Sensors | 系统已经暴露的温度、风扇转速及电压；不同设备会提供不同项目 |
 
-### btop 常用按键
+### 参数视图常用按键
 
-以下按键依据 [btop 1.4.7 上游帮助](https://github.com/aristocratos/btop/blob/v1.4.7/src/btop_menu.cpp#L163-L205)。
-配置开启 Vim 导航，`j/k` 与上下方向键都可选择进程。
+保留以下 [btop 操作](https://github.com/aristocratos/btop/blob/v1.4.7/src/btop_menu.cpp#L163-L205)。
+进程相关按键只在 `proc` / `all` 视图中使用，`j/k` 与上下方向键都可选择进程。
 
 | 按键 | 功能 |
 | --- | --- |
@@ -62,33 +69,34 @@ GPU 任务另开 `sysmon gpu`，按进程名或 PID 对照 GPU 利用率与显�
 | `n` / `b` | 下一张 / 上一张网卡 |
 | `1` / `2` / `3` / `4` | 显示 / 隐藏 CPU、内存、网络、进程区域 |
 | `5` | 显示 / 隐藏第一张可检测 GPU 的区域 |
-| `m` | 打开菜单 |
-| `F1` 或 `?` | 打开完整帮助 |
-| `q` / `Ctrl+C` | 退出 |
+| `Esc` / `q` / `Ctrl+C` | 退出；筛选输入中的 `Esc` 取消输入 |
 
-总览和 I/O 每次打开都会恢复仓库的起始布局；菜单内的临时调整不写回配置。
+每次打开都会恢复仓库的起始布局，临时调整不写回配置。菜单、帮助与进程发信号 / 调整优先级的按键不启用。
 `sysmon --theme moonlit` 或 `sysmon --theme rose` 可显式选择 btop 配色；默认根据当前 Kitty 主题选择。
 nvtop 使用终端颜色，其个人偏好保存到 `${XDG_STATE_HOME:-$HOME/.local/state}/sysmon/nvtop.ini`。
 
 ## 安装与独立部署
 
-软件安装清单包含 Arch / Homebrew 的 `btop`；Arch 还包含 `nvtop` 与 `lm_sensors`。
-已有桌面只想补齐监控软件时，可在 Arch 执行完整升级安装：
+默认入口需要本仓库构建的 `btop-view`，单独安装系统 `btop` 不包含精简界面补丁。
+构建需要 Python 3、`make`、`patch` 及 GCC 14+ 或 Clang 19+；macOS 的编译器设置见
+[上游构建说明](https://github.com/aristocratos/btop/tree/v1.4.7#compilation-macos-osx)。Arch 可安装构建工具与可选视图：
 
 ```sh
-sudo pacman -Syu --needed btop nvtop lm_sensors
+sudo pacman -Syu --needed gcc make patch nvtop lm_sensors
 ```
 
-传感器视图还需要系统的 `watch` 命令。macOS 安装总览工具用 `brew install btop`。
-新机器也可沿用 `bash scripts/install-tools.sh` 先看计划，再加 `--apply` 执行。
-安装软件与部署配置是两步；软件安装不能通过配置恢复撤销。
-
-部署只管理监控入口与主题，不替换当前 Kitty、Neovim、Niri 或 Moonlit 会话：
+传感器视图还需要系统的 `watch` 命令。软件清单中的 `btop` 仍可单独使用；Arch 另含 `nvtop` 与 `lm_sensors`。
+在仓库中构建一次，再部署入口：
 
 ```sh
+python3 scripts/build-monitor.py
 python3 scripts/deploy.py --monitor
 python3 scripts/deploy.py --monitor --apply
 ```
+
+构建脚本下载固定版本源码、校验哈希并应用补丁，将结果安装到用户工具目录；运行 `sysmon` 时不会下载或编译。
+补丁更新后重新运行构建命令，可用 `python3 scripts/build-monitor.py --check` 验证安装。
+构建与软件安装不能通过配置恢复撤销。`--monitor` 部署只管理监控入口与主题，不替换当前桌面会话。
 
 命令链接位于 `~/.local/bin/sysmon`，配置位于 `${XDG_CONFIG_HOME:-$HOME/.config}/sysmon/`。
 `--monitor` 与 `--desktop` 互斥。自定义 XDG_CONFIG_HOME 不会改变命令链接所在的 HOME；
@@ -121,12 +129,13 @@ niri msg action load-config-file --path "${XDG_CONFIG_HOME:-$HOME/.config}/niri/
 
 这条 include 从已有的本地覆盖引入独立入口，也适用于 Niri 配置链接到固定 Moonlit release 的会话；
 无需改写该 release 或会话 transaction。真实会话的 `Mod` 是 Super，嵌套 Niri 通常是 Alt。
+监控窗口默认浮动在右下角，宽、高各为可用桌面的二分之一；可以用 Niri 常规操作移动或调整大小。
 恢复监控部署前，先从个人文件移除这条 include 并验证 / 重载 Niri，再恢复部署备份，避免留下失效 include。
 个人文件的追加内容不在 `deploy.py` 的监控备份范围内。
 
 ## 设备与平台边界
 
-GPU 图表取决于 btop 的 GPU 构建支持、驱动和设备库；缺少可检测 GPU 时总览仍可查看 CPU、RAM、网络和进程。
+GPU 图表取决于驱动和设备库；缺少可检测 GPU 时紧凑视图仍可查看 CPU、RAM、磁盘和网络。
 NVIDIA 通常通过驱动自带的 NVML 提供数据；AMD / Intel 的项目随驱动与权限而异。
 部分 CPU 功率、Intel GPU 信息需要额外读取权限；入口不自动使用 sudo、不设置 capability，也不加载驱动。
 空值表示该项暂不可读，不等于使用量为零。[btop GPU 说明](https://github.com/aristocratos/btop/tree/v1.4.7#optional-dependencies-needed-for-gpu-monitoring)、
@@ -135,6 +144,6 @@ NVIDIA 通常通过驱动自带的 NVML 提供数据；AMD / Intel 的项目随�
 `sensors` 仅显示内核已提供的传感器，不自动运行 `sensors-detect`、加载模块或更改风扇控制。
 温度名称与核编号需要结合机器实际传感器确认。运行监控本身无需修改功耗策略、超频或桌面会话。
 
-macOS 可用 `sysmon` / `sysmon io` 及 Kitty 新窗口入口；本仓库的 nvtop 和 lm_sensors 安装项仅在 Arch 提供。
-btop 的 macOS GPU 支持针对 Apple Silicon，仍取决于安装的构建和机器；温度、功率、磁盘及进程数据与 Linux
+macOS 构建后可用 `sysmon` / `sysmon io` 及 Kitty 新窗口入口；本仓库的 nvtop 和 lm_sensors 安装项仅在 Arch 提供。
+btop 的 macOS GPU 支持针对 Apple Silicon，仍取决于构建和机器；温度、功率、磁盘及进程数据与 Linux
 不保证一致。Niri 快捷键仅限 Linux。Linux 实机图表、快捷键与 macOS 验证应分别报告，配置解析不代表 GUI 或硬件验收。

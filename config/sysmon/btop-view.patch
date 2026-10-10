@@ -1,0 +1,183 @@
+--- a/src/btop_input.cpp
++++ b/src/btop_input.cpp
+@@ -221,10 +221,10 @@
+ 			//? Global input actions
+ 			if (not filtering) {
+ 				bool keep_going = false;
+-				if (key == "q") {
++				if (is_in(key, "q", "escape")) {
+ 					clean_quit(0);
+ 				}
+-				else if (is_in(key, "escape", "m")) {
++				else if (key == "m") {
+ 					Menu::show(Menu::Menus::Main);
+ 					return;
+ 				}
+--- a/src/btop_menu.cpp
++++ b/src/btop_menu.cpp
+@@ -1888,6 +1888,9 @@
+ 	}
+ 
+ 	void show(int menu, int signal) {
++		// The dedicated sysmon binary only displays metrics and size errors.
++		// Guard all callers, including keyboard and mouse process actions.
++		if (menu != Menus::SizeError) return;
+ 		menuMask.set(menu);
+ 		signalToSend = signal;
+ 		process();
+--- a/src/btop_draw.cpp
++++ b/src/btop_draw.cpp
+@@ -517,7 +517,7 @@
+ 
+ namespace Cpu {
+ 	int width_p = 100, height_p = 32;
+-	int min_width = 60, min_height = 8;
++	int min_width = 60, min_height = 10;
+ 	int x = 1, y = 1, width = 20, height;
+ 	int b_columns, b_column_size;
+ 	int b_x, b_y, b_width, b_height;
+@@ -594,12 +594,7 @@
+ 			const int button_y = cpu_bottom ? y + height - 1 : y;
+ 			out += box;
+ 
+-			//? Buttons on title
+-			out += Mv::to(button_y, x + 10) + title_left + Theme::c("hi_fg") + Fx::b + 'm' + Theme::c("title") + "enu" + Fx::ub + title_right;
+-			Input::mouse_mappings["m"] = {button_y, x + 11, 1, 4};
+-			out += Mv::to(button_y, x + 16) + title_left + Theme::c("hi_fg") + Fx::b + 'p' + Theme::c("title") + "reset "
+-				+ (!Config::current_preset.has_value() ? "*" : to_string(Config::current_preset.value())) + Fx::ub + title_right;
+-			Input::mouse_mappings["p"] = {button_y, x + 17, 1, 8};
++			//? Refresh interval on title
+ 			const string update = to_string(Config::getI("update_ms")) + "ms";
+ 			out += Mv::to(button_y, x + width - update.size() - 8) + title_left + Fx::b + Theme::c("hi_fg") + "- " + Theme::c("title") + update
+ 				+ Theme::c("hi_fg") + " +" + Fx::ub + title_right;
+@@ -1683,7 +1678,6 @@
+ 		auto& graph_symbol = (tty_mode ? "tty" : Config::getS("graph_symbol_proc"));
+ 		auto& graph_bg = Symbols::graph_symbols.at((graph_symbol == "default" ? Config::getS("graph_symbol") + "_up" : graph_symbol + "_up")).at(6);
+ 		auto mem_bytes = Config::getB("proc_mem_bytes");
+-		auto vim_keys = Config::getB("vim_keys");
+ 		auto show_graphs = Config::getB("proc_cpu_graphs");
+ 		const auto pause_proc_list = Config::getB("pause_proc_list");
+ 		auto follow_process = Config::getB("follow_process");
+@@ -1813,22 +1807,6 @@
+ 				const string hi_color = (not alive or selected > 0 ? t_color : Theme::c("hi_fg"));
+ 				int mouse_x = d_x + 2;
+ 				out += Mv::to(d_y, d_x + 1);
+-				if (width > 55) {
+-					out += Fx::ub + title_left + hi_color + Fx::b + 't' + t_color + "erminate" + Fx::ub + title_right;
+-					if (alive and selected == 0) Input::mouse_mappings["t"] = {d_y, mouse_x, 1, 9};
+-					mouse_x += 11;
+-				}
+-				out += title_left + hi_color + Fx::b + (vim_keys ? 'K' : 'k') + t_color + "ill" + Fx::ub + title_right
+-					+ title_left + hi_color + Fx::b + 's' + t_color + "ignals" + Fx::ub + title_right
+-					+ title_left + hi_color + Fx::b + 'N' + t_color + "ice" + Fx::ub + title_right;
+-				if (alive and selected == 0) {
+-					Input::mouse_mappings[vim_keys ? "K" : "k"] = {d_y, mouse_x, 1, 4};
+-					mouse_x += 6;
+-					Input::mouse_mappings["s"] = {d_y, mouse_x, 1, 7};
+-				    mouse_x += 9;
+-					Input::mouse_mappings["N"] = {d_y, mouse_x, 1, 5};
+-				    mouse_x += 7;
+-				}
+ 				if (width > 77) {
+ 				    fmt::format_to(std::back_inserter(out), "{}{}{}{}{}{}{}{}",
+ 				    	title_left, follow_process ? Fx::b : "",
+@@ -1913,7 +1891,7 @@
+ 				Input::mouse_mappings["left"] = {y, sort_pos + 1, 1, 2};
+ 				Input::mouse_mappings["right"] = {y, sort_pos + sort_len + 3, 1, 2};
+ 
+-			//? select, info, signal, and follow buttons
++			//? select, info, and follow buttons
+ 			const string down_button = (is_last_process_in_list ? Theme::c("inactive_fg") : Theme::c("hi_fg")) + Symbols::down;
+ 			const bool is_up_button_highlighted = selected != 0 or (follow_process and followed_pid == Config::getI("detailed_pid") and should_selection_return_to_followed);
+ 			const string up_button = (is_up_button_highlighted ? Theme::c("hi_fg") : Theme::c("inactive_fg")) + Symbols::up;
+@@ -1924,22 +1902,6 @@
+ 				+ title_left_down + Fx::b + t_color + "info " + hi_color + Symbols::enter + Fx::ub + title_right_down;
+ 				if (selected > 0) Input::mouse_mappings["info_enter"] = {y + height - 1, mouse_x, 1, 6};
+ 				mouse_x += 8;
+-			if (width > 60) {
+-				out += title_left_down + Fx::b + hi_color + 't' + t_color + "erminate" + Fx::ub + title_right_down;
+-				if (selected > 0) Input::mouse_mappings["t"] = {y + height - 1, mouse_x, 1, 9};
+-				mouse_x += 11;
+-			}
+-			if (width > 55) {
+-				out += title_left_down + Fx::b + hi_color + (vim_keys ? 'K' : 'k') + t_color + "ill" + Fx::ub + title_right_down;
+-				if (selected > 0) Input::mouse_mappings[vim_keys ? "K" : "k"] = {y + height - 1, mouse_x, 1, 4};
+-				mouse_x += 6;
+-			}
+-			out += title_left_down + Fx::b + hi_color + 's' + t_color + "ignals" + Fx::ub + title_right_down;
+-			if (selected > 0) Input::mouse_mappings["s"] = {y + height - 1, mouse_x, 1, 7};
+-		    mouse_x += 9;
+-		    out += title_left_down + Fx::b + hi_color + 'N' + t_color + "ice" + Fx::ub + title_right_down;
+-		    if (selected > 0) Input::mouse_mappings["N"] = {y + height -1, mouse_x, 1, 5};
+-			mouse_x += 6;
+ 			if (width > 72) {
+ 			    fmt::format_to(std::back_inserter(out), "{}{}{}{}{}{}{}{}",
+ 			    	title_left_down, follow_process ? Fx::b : "",
+@@ -2288,19 +2250,20 @@
+ 			if (Gpu::shown != 0 and not (Mem::shown or Net::shown or Proc::shown)) {
+ 				height = Term::height - Gpu::total_height - gpus_extra_height;
+ 			} else {
+-				height = max(8, (int)ceil((double)Term::height * (trim(boxes) == "cpu" ? 100 : height_p/(Gpu::shown+1) + (Gpu::shown != 0)*5) / 100));
++				height = max(min_height, (int)ceil((double)Term::height * (trim(boxes) == "cpu" ? 100 : height_p/(Gpu::shown+1) + (Gpu::shown != 0)*5) / 100));
+ 			}
+ 			if (height <= Term::height-gpus_extra_height) height += gpus_extra_height;
+ 		#else
+-			height = max(8, (int)ceil((double)Term::height * (trim(boxes) == "cpu" ? 100 : height_p) / 100));
++			height = max(min_height, (int)ceil((double)Term::height * (trim(boxes) == "cpu" ? 100 : height_p) / 100));
+ 		#endif
+ 			x = 1;
+ 			y = cpu_bottom ? Term::height - height + 1 : 1;
+ 
+ 		#ifdef GPU_SUPPORT
+-			b_columns = max(2, (int)ceil((double)(Shared::coreCount + 1) / (height - gpus_extra_height - 5)));
++			// Borders, total usage and load average consume six rows.
++			b_columns = max(2, (int)ceil((double)Shared::coreCount / max(1, height - gpus_extra_height - 6)));
+ 		#else
+-			b_columns = max(1, (int)ceil((double)(Shared::coreCount + 1) / (height - 5)));
++			b_columns = max(1, (int)ceil((double)Shared::coreCount / max(1, height - 6)));
+ 		#endif
+ 			if (b_columns * (21 + 12 * show_temp) < width - (width / 3)) {
+ 				b_column_size = 2;
+@@ -2365,10 +2328,10 @@
+ 				redraw[i] = true;
+ 				int height = 0;
+ 				width = Term::width;
++				// Keep GPU metrics at their supported minimum; the CPU core table
++				// must not enlarge every GPU panel in a compact window.
+ 				if (Cpu::shown)
+-					if (not (Mem::shown or Net::shown or Proc::shown))
+-						height = min_height;
+-					else height = Cpu::height;
++					height = min_height;
+ 				else
+ 					if (not (Mem::shown or Net::shown or Proc::shown))
+ 						height = (Term::height - total_height) / (Gpu::shown - i) + (i == 0) * ((Term::height - total_height) % (Gpu::shown - i));
+@@ -2409,6 +2372,8 @@
+ 		#else
+ 			height = floor(static_cast<double>(Term::height) * (100 - Cpu::height_p * Cpu::shown - Net::height_p * Net::shown) / 100);
+ 		#endif
++			// Preserve RAM/swap rows when the CPU/GPU panels need more space.
++			height = max(min_height, height);
+ 			x = (proc_left and Proc::shown) ? Term::width - width + 1: 1;
+ 			if (mem_below_net and Net::shown)
+ 		#ifdef GPU_SUPPORT
+--- a/src/btop.cpp
++++ b/src/btop.cpp
+@@ -182,7 +182,7 @@
+ 			for (; not Term::refresh() and not got_key; got_key = Input::poll(10));
+ 			if (got_key) {
+ 				auto key = Input::get();
+-				if (key == "q")
++				if (is_in(key, "q", "escape"))
+ 					clean_quit(0);
+ 				else if (key.size() == 1 and isint(key)) {
+ 					auto intKey = stoi(key);
+@@ -681,7 +681,7 @@
+ 						"{mv4}{hiFg}3 {mainFg}| Show NET box"
+ 						"{mv5}{hiFg}4 {mainFg}| Show PROC box"
+ 						"{mv6}{hiFg}5-0 {mainFg}| Show GPU boxes"
+-						"{mv7}{hiFg}esc {mainFg}| Show menu"
++						"{mv7}{hiFg}esc {mainFg}| Quit"
+ 						"{mv8}{hiFg}q {mainFg}| Quit",
+ 						"banner"_a = Draw::banner_gen(y, 0, true),
+ 						"titleFg"_a = Theme::c("title"), "b"_a = Fx::b, "hiFg"_a = Theme::c("hi_fg"), "mainFg"_a = Theme::c("main_fg"),

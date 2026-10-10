@@ -10,7 +10,7 @@ macOS 与 Arch Linux 共用的 Kitty / Neovim 配置，以及可选的 Arch Niri
 - AI agent 在独立终端工作；Neovim 检查外部文件变化，保留有未保存修改时的冲突提示。
 - Niri：二次元壁纸、四个工作区、三档信息栏、中文输入、网课常亮与独立锁屏；[完整使用说明](docs/niri.md)。
 - Moonlit Bloom：支持隔离预览和可恢复的受控会话迁移；[使用与恢复说明](docs/moonlit-preview.md)。
-- 硬件监控：`sysmon` 查看 CPU / GPU / RAM 图表，`sysmon gpu` 查看显存与 GPU 进程；独立入口沿用现有配色，[使用与部署说明](docs/hardware-monitor.md)。
+- 硬件监控：`sysmon` 查看紧凑 CPU / GPU / RAM 图表，Niri 窗口约占四分之一桌面；`sysmon gpu` 查看显存与 GPU 进程，沿用现有配色，[使用与部署说明](docs/hardware-monitor.md)。
 - 本地差异放在仓库外，旧配置和 Neovim 插件数据保留。不管理 shell、SSH、Git 身份或默认登录会话。
 
 ## 新机器恢复
@@ -45,15 +45,18 @@ python3 scripts/doctor.py
 硬件监控入口单独部署，适合已使用 Moonlit 会话的机器：
 
 ```sh
+python3 scripts/build-monitor.py             # 一次构建：固定版本 btop 与精简界面补丁
 python3 scripts/deploy.py --monitor          # 预览命令链接、配置及备份计划
 python3 scripts/deploy.py --monitor --apply  # 仅部署监控入口与主题
-sysmon                                     # 当前终端中的图表总览
+sysmon                                     # 紧凑参数图表，Esc / q 退出
 sysmon --filter python --window             # 独立窗口观察 Python 进程
 ```
 
-软件清单提供 `btop`；Arch 另含 GPU 视图的 `nvtop` 和传感器视图的 `lm_sensors`。
+默认每 3 秒刷新且不扫描进程；`sysmon proc` / `sysmon all` 按需展开进程列表或完整总览。
+默认入口需要构建的 `btop-view`，系统 `btop` 不包含精简补丁；构建依赖见指南。
+Arch 另含 GPU 视图的 `nvtop` 和传感器视图的 `lm_sensors`。
 Niri 的 `Super+M` / `Super+Shift+M` 需要按 [硬件监控指南](docs/hardware-monitor.md#启用-niri-快捷键)
-添加个人 include；监控部署不替换当前桌面或终端主题。macOS 使用 btop 总览，设备数据与 Linux 分别验证。
+添加个人 include；监控部署不替换当前桌面或终端主题。macOS 构建与设备数据另行验证。
 
 Kitty 会为新窗口补充用户工具路径；macOS 还补充两种架构的 Homebrew 路径，
 从 Dock 启动也能找到 LazyGit。其他终端和 SSH shell 中，按需把下面一行加入

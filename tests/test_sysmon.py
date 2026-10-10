@@ -24,7 +24,7 @@ FAKE_TOOL = '''import json, os, pathlib, sys
 name = pathlib.Path(sys.argv[0]).name
 record = {"argv": sys.argv[1:], "config_home": os.environ.get("XDG_CONFIG_HOME"),
           "state_home": os.environ.get("XDG_STATE_HOME")}
-if name == "btop":
+if name == "btop-view":
     config = pathlib.Path(sys.argv[sys.argv.index("--config") + 1])
     record["config"] = str(config)
     record["contents"] = config.read_text()
@@ -108,7 +108,7 @@ class SysmonLaunchTests(unittest.TestCase):
         self.assertFalse((self.config / "btop/themes").exists())
 
     def test_btop_writes_are_isolated_per_invocation_and_cleaned_up(self):
-        self.tool("btop")
+        self.tool("btop-view")
         paths = []
         for view in ("all", "io"):
             result = self.run_monitor(view)
@@ -125,7 +125,7 @@ class SysmonLaunchTests(unittest.TestCase):
         self.assertNotEqual(*paths, "Separate launches must never share a writable app config")
 
     def test_filter_is_one_literal_argument_without_shell_expansion(self):
-        self.tool("btop")
+        self.tool("btop-view")
         marker = self.root / "shell-expanded"
         literal = f'python; touch "{marker}" $(touch "{marker}") $HOME `touch "{marker}"'
         result = self.run_monitor("--filter", literal, "--interval", "750")
@@ -135,6 +135,27 @@ class SysmonLaunchTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--update") + 1], "750")
         self.assertFalse(marker.exists())
         self.assert_shared_untouched()
+
+    def test_process_collection_is_opt_in_with_three_second_default(self):
+        self.tool("btop-view")
+        for arguments, processes, network in (
+            ((), False, True),
+            (("proc",), True, False),
+            (("all",), True, True),
+            (("--filter", "python"), True, False),
+            (("io", "--filter", "python"), True, False),
+        ):
+            with self.subTest(arguments=arguments):
+                result = self.run_monitor(*arguments)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                record = self.launched()
+                boxes = re.search(r'^shown_boxes = "([^"]+)"$', record["contents"], re.MULTILINE).group(1).split()
+                self.assertEqual("proc" in boxes, processes, "The native collector runs only for visible panels")
+                self.assertEqual("net" in boxes, network)
+                self.assertTrue({"cpu", "gpu0", "mem"}.issubset(boxes))
+                self.assertEqual(record["argv"][record["argv"].index("--update") + 1], "3000")
+                self.assertEqual("io_mode = true" in record["contents"], "io" in arguments)
+                self.assert_shared_untouched()
 
     def test_window_inherits_kitty_config_and_application_id(self):
         self.tool("kitty")
@@ -150,7 +171,7 @@ class SysmonLaunchTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--filter") + 1], "my program")
 
     def test_auto_theme_tracks_current_kitty_palette_and_explicit_override(self):
-        self.tool("btop")
+        self.tool("btop-view")
         kitty = self.config / "kitty/theme.conf"
         for background, arguments, expected in (
             ("#19151c", (), "dark-rose"),
@@ -193,7 +214,7 @@ class SysmonLaunchTests(unittest.TestCase):
         self.assertEqual(argv[argv.index("--interval") + 1], "0.5")
 
     def test_noninteractive_use_reports_window_alternative_without_launching(self):
-        self.tool("btop")
+        self.tool("btop-view")
         result = self.run_monitor(terminal=False)
         self.assertEqual(result.returncode, 1)
         self.assertIn("interactive terminal", result.stderr)
@@ -201,8 +222,8 @@ class SysmonLaunchTests(unittest.TestCase):
         self.assertFalse(self.record.exists())
 
     def test_missing_system_tool_uses_executable_user_install_then_reports_absence(self):
-        local = self.home / ".local/share/dotfiles/tools/sysmon/btop/usr/bin"
-        tool = self.tool("btop", directory=local)
+        local = self.home / ".local/share/dotfiles/tools/sysmon/btop-view/usr/bin"
+        tool = self.tool("btop-view", directory=local)
         result = self.run_monitor()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(self.record.exists())
@@ -210,7 +231,7 @@ class SysmonLaunchTests(unittest.TestCase):
         tool.chmod(0o644)
         result = self.run_monitor()
         self.assertEqual(result.returncode, 1)
-        self.assertIn("btop is missing", result.stderr)
+        self.assertIn("Menu-free monitor is missing", result.stderr)
         self.assertIn("docs/hardware-monitor.md", result.stderr)
         self.assertFalse(self.record.exists())
         self.assert_shared_untouched()
